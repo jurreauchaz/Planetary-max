@@ -1,24 +1,14 @@
-name = "max-space-portal-os"
+name = "portal-os-sovereign"
 main = "src/index.ts"
-compatibility_date = "2026-11-01"
-compatibility_flags = ["nodejs_compat"]
+compatibility_date = "2026-03-01"
 
 [vars]
-ENVIRONMENT = "development"
-ROOT_IDENTITY = "did:max:root"
-ART_IDENTITY = "did:maxj:art"
-PERSONAL_LIQUIDITY_BPS = "2500"
+ENVIRONMENT = "production"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "max-sovereign-core"
-database_id = "REPLACE_WITH_PORTAL_OS_D1_DATABASE_ID"
-migrations_dir = "migrations"
+database_name = "portal_os_sovereign_db"
+database_id = "27f854d1-6c29-4a30-aaa5-345da09b02ff"
 
-[[durable_objects.bindings]]
-name = "SOVEREIGN_MESH"
-class_name = "SovereignMeshDO"
-
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["SovereignMeshDO"]
+[migrations]
+dir = "migrations"

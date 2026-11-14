@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ChessRecordForm } from '../components/ChessRecordForm';
 
 interface ChessGame {
   game_id: string;
@@ -14,20 +15,22 @@ export default function ChessPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch('/v1/dat/chess/list', { signal: controller.signal })
-      .then(async (response) => {
-        const data = await response.json() as { success?: boolean; games?: ChessGame[]; error?: string };
-        if (!response.ok || !data.success) throw new Error(data.error || 'Unable to load chess games.');
-        setGames(Array.isArray(data.games) ? data.games : []);
-      })
-      .catch((cause) => {
-        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to load chess games.');
-      })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
+  const loadGames = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/v1/dat/chess/list');
+      const data = await response.json() as { success?: boolean; games?: ChessGame[]; error?: string };
+      if (!response.ok || !data.success) throw new Error(data.error || 'Unable to load chess games.');
+      setGames(Array.isArray(data.games) ? data.games : []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to load chess games.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { void loadGames(); }, [loadGames]);
 
   return (
     <div style={{ padding: '2rem', background: '#0a0a0c', color: '#f0f0f5', minHeight: '100%', fontFamily: 'sans-serif' }}>
@@ -35,9 +38,10 @@ export default function ChessPage() {
         <h1 style={{ fontSize: '1.8rem', fontWeight: 300, letterSpacing: '2px' }}>MAX CHESS</h1>
         <p style={{ color: '#888', fontSize: '0.9rem' }}>Recorded games and PGN archive</p>
       </header>
+      <ChessRecordForm onSuccess={() => { void loadGames(); }} />
       {loading ? <p role="status">Loading games…</p> : error ? <p role="alert">{error}</p> : games.length === 0 ? (
         <section style={{ padding: '2rem', background: '#121216', border: '1px solid #222', borderRadius: '12px', color: '#aaa' }}>
-          No chess games have been recorded yet. This page currently displays game records; it is not an interactive chessboard.
+          No chess games have been recorded yet. This page displays game records; it is not an interactive chessboard.
         </section>
       ) : (
         <div style={{ display: 'grid', gap: '1rem' }}>

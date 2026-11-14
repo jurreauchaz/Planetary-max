@@ -1,14 +1,123 @@
-// Public read-only lists for the prototype Chess and Sports screens.
-// Writes are intentionally not exposed until an authenticated publisher flow exists.
+import { Hono } from 'hono';
+import { z } from 'zod';
+
+import type { Bindings } from './types';
+
+const app = new Hono<{ Bindings: Bindings }>();
+const leagues = ['NFL', 'NBA', 'MLB', 'SOCCER', 'MMA'] as const;
+
+const ArtworkSchema = z.object({
+  creator: z.string().trim().min(1).max(100),
+  title: z.string().trim().min(1).max(200),
+  medium: z.string().trim().min(1).max(100),
+  dimensions: z.string().trim().max(100).default(''),
+  price_cents: z.number().int().min(1).max(100_000_000),
+  image_url: z.string().url().max(2048),
+  provenance_hash: z.string().trim().regex(/^(?:0x)?[\da-fA-F]{64}$/, 'Expected a SHA-256 hex digest'),
+});
+const ChessSchema = z.object({
+  gameId: z.string().trim().min(3).max(64),
+  whitePlayer: z.string().trim().min(1).max(100),
+  blackPlayer: z.string().trim().min(1).max(100),
+  openingTag: z.string().trim().max(100).default(''),
+  pgnData: z.string().trim().min(3).max(50_000),
+});
+const SportsSchema = z.object({
+  eventId: z.string().trim().min(3).max(64),
+  league: z.enum(leagues),
+  matchup: z.string().trim().min(1).max(200),
+  oracleConsensus: z.object({
+    predictedWinner: z.string().trim().min(1).max(100),
+    confidenceScore: z.number().finite().min(0).max(100),
+    dataSourcesCount: z.number().int().min(1).max(1000),
+  }).strict(),
+});
+
+function sameOriginWrite(c: { req: { header(name: string): string | undefined; url: string } }) {
+  const origin = c.req.header('Origin');
+  return Boolean(origin && origin === new URL(c.req.url).origin);
+}
+
+async function readJson(c: { req: { header(name: string): string | undefined; json(): Promise<unknown> } }) {
+  const contentLength = Number(c.req.header('Content-Length') ?? '0');
+  if (Number.isFinite(contentLength) && contentLength > 60_000) throw new Error('Request body too large');
+  const body = await c.req.json();
+  if (new TextEncoder().encode(JSON.stringify(body)).byteLength > 60_000) throw new Error('Request body too large');
+  return body;
+}
+
+// Catalog reads use the existing marketplace schema. Provenance is stored in
+// artworks.metadata_hash; creator names come from the related users record.
+app.get('/api/artworks', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare(
+      `SELECT a.id, a.artist_id, a.title, u.username AS artist_name,
+              ap.bio, ap.portfolio_url, a.medium, a.dimensions, a.price_cents,
+              a.image_url, a.status, a.metadata_hash AS provenance_hash
+       FROM artworks a
+       JOIN users u ON u.id = a.artist_id
+       LEFT JOIN artist_profiles ap ON ap.user_id = a.artist_id
+       ORDER BY a.created_at DESC LIMIT 100`
+    ).all();
+    return c.json({ artworks: results ?? [] });
+  } catch (error) {
+    console.error('Unable to read artwork catalog:', error);
+    return c.json({ error: 'Artwork catalog is unavailable. Apply the D1 migrations.' }, 503);
+  }
+});
+
+app.post('/api/artworks', async (c) => {
+  if (!sameOriginWrite(c)) return c.json({ success: false, error: 'A same-origin request is required.' }, 403);
+  let parsed;
+  try { parsed = ArtworkSchema.safeParse(await readJson(c)); } catch (error) {
+    return c.json({ success: false, error: error instanceof Error ? error.message : 'Invalid JSON body.' }, 400);
+  }
+  if (!parsed.success) return c.json({ success: false, error: 'Invalid artwork data.', details: parsed.error.flatten() }, 400);
+  const input = parsed.data;
+
+  try {
+    const creator = await c.env.DB.prepare('SELECT id FROM users WHERE id = ? OR username = ? LIMIT 1').bind(input.creator, input.creator).first<{ id: string }>();
+    if (!creator) return c.json({ success: false, error: 'Creator account was not found. Use an existing artist account username or ID.' }, 400);
+    await c.env.DB.prepare(
+      `INSERT INTO artworks (id, artist_id, title, medium, dimensions, price_cents, currency, image_url, status, metadata_hash)
+       VALUES (?, ?, ?, ?, ?, ?, 'DAT', ?, 'available', ?)`
+    ).bind(crypto.randomUUID(), creator.id, input.title, input.medium, input.dimensions, input.price_cents, input.image_url, input.provenance_hash.replace(/^0x/i, '').toLowerCase()).run();
+    return c.json({ success: true, message: 'Artwork listed.', artwork: { artist_id: creator.id, title: input.title } }, 201);
+  } catch (error) {
+    console.error('Unable to save artwork:', error);
+    return c.json({ success: false, error: 'Artwork could not be saved to D1.' }, 503);
+  }
+});
+
 app.get('/v1/dat/chess/list', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      'SELECT game_id, white_player, black_player, pgn_data, status, updated_at FROM chess_games ORDER BY updated_at DESC LIMIT 50'
+      'SELECT game_id, white_player, black_player, opening_tag, pgn_data, status, updated_at FROM chess_games ORDER BY updated_at DESC LIMIT 50'
     ).all();
     return c.json({ success: true, games: results ?? [] });
   } catch (error) {
-    console.error('Failed to retrieve chess games:', error);
-    return c.json({ success: false, error: 'Chess records are unavailable. Apply the chess and sports database migration.' }, 503);
+    console.error('Unable to read chess records:', error);
+    return c.json({ success: false, error: 'Chess records are unavailable. Apply the D1 migrations.' }, 503);
+  }
+});
+
+app.post('/v1/dat/chess', async (c) => {
+  if (!sameOriginWrite(c)) return c.json({ success: false, error: 'A same-origin request is required.' }, 403);
+  let parsed;
+  try { parsed = ChessSchema.safeParse(await readJson(c)); } catch (error) {
+    return c.json({ success: false, error: error instanceof Error ? error.message : 'Invalid JSON body.' }, 400);
+  }
+  if (!parsed.success) return c.json({ success: false, error: 'Invalid chess record.', details: parsed.error.flatten() }, 400);
+  const game = parsed.data;
+  try {
+    await c.env.DB.prepare(
+      `INSERT INTO chess_games (game_id, white_player, black_player, opening_tag, pgn_data, status)
+       VALUES (?, ?, ?, ?, ?, 'active')`
+    ).bind(game.gameId, game.whitePlayer, game.blackPlayer, game.openingTag, game.pgnData).run();
+    return c.json({ success: true, game_id: game.gameId }, 201);
+  } catch (error) {
+    console.error('Unable to save chess record:', error);
+    return c.json({ success: false, error: 'Chess record could not be saved. The game ID may already exist.' }, 409);
   }
 });
 
@@ -19,15 +128,44 @@ app.get('/v1/dat/sports/list', async (c) => {
     ).all<{ event_id: string; league: string; matchup: string; oracle_consensus_json: string; updated_at: string }>();
     const telemetry = (results ?? []).map((row) => {
       let oracle_consensus: unknown = {};
-      try { oracle_consensus = JSON.parse(row.oracle_consensus_json); } catch { /* Leave malformed legacy payload empty. */ }
+      try { oracle_consensus = JSON.parse(row.oracle_consensus_json); } catch { /* Skip parsing malformed legacy data. */ }
       return { event_id: row.event_id, league: row.league, matchup: row.matchup, oracle_consensus, updated_at: row.updated_at };
     });
     return c.json({ success: true, telemetry });
   } catch (error) {
-    console.error('Failed to retrieve sports telemetry:', error);
-    return c.json({ success: false, error: 'Sports telemetry is unavailable. Apply the chess and sports database migration.' }, 503);
+    console.error('Unable to read sports telemetry:', error);
+    return c.json({ success: false, error: 'Sports telemetry is unavailable. Apply the D1 migrations.' }, 503);
   }
 });
 
-app.all('*', async (c) => c.env.ASSETS.fetch(c.req.raw));
+app.post('/v1/dat/sports', async (c) => {
+  if (!sameOriginWrite(c)) return c.json({ success: false, error: 'A same-origin request is required.' }, 403);
+  let parsed;
+  try { parsed = SportsSchema.safeParse(await readJson(c)); } catch (error) {
+    return c.json({ success: false, error: error instanceof Error ? error.message : 'Invalid JSON body.' }, 400);
+  }
+  if (!parsed.success) return c.json({ success: false, error: 'Invalid sports telemetry.', details: parsed.error.flatten() }, 400);
+  const item = parsed.data;
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO sports_telemetry (event_id, league, matchup, oracle_consensus_json) VALUES (?, ?, ?, ?)'
+    ).bind(item.eventId, item.league, item.matchup, JSON.stringify(item.oracleConsensus)).run();
+    return c.json({ success: true, event_id: item.eventId }, 201);
+  } catch (error) {
+    console.error('Unable to save sports telemetry:', error);
+    return c.json({ success: false, error: 'Sports telemetry could not be saved. The event ID may already exist.' }, 409);
+  }
+});
+
+app.notFound((c) => {
+  if (c.req.path.startsWith('/api/') || c.req.path.startsWith('/v1/')) return c.json({ error: 'Not found' }, 404);
+  return c.env.ASSETS.fetch(c.req.raw);
+});
+app.onError((error, c) => {
+  console.error('Request failed:', error);
+  return c.json({ error: 'Internal server error' }, 500);
+});
+
+export { NodeRegistryDO } from '../workers/beemax-core/src/registryDo';
+export { BEEMAXSecureNodeRegistryDO } from '../workers/beemax-core/src/secureRegistryDo';
 export default app;

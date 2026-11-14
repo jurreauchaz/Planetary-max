@@ -1,6 +1,6 @@
-PRAGMA foreign_keys = ON;
-
-BEGIN TRANSACTION;
+-- D1 applies migration files transactionally. Do not add SQL BEGIN/COMMIT
+-- statements here; Durable Object storage transaction APIs are not available
+-- inside a D1 migration. D1 enforces foreign keys without a PRAGMA toggle.
 
 -- Core mesh tables
 CREATE TABLE IF NOT EXISTS node_telemetry (
@@ -49,5 +49,3 @@ CREATE TABLE IF NOT EXISTS qal_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_qal_sessions_node ON qal_sessions(node_id);
 CREATE INDEX IF NOT EXISTS idx_qal_sessions_expiry ON qal_sessions(expires_at);
-
-COMMIT;

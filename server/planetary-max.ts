@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import portalSessionRoutes from './portalSessions';
 
 import type { Bindings } from './types';
 
@@ -45,6 +46,8 @@ async function readJson(c: { req: { header(name: string): string | undefined; js
   if (new TextEncoder().encode(JSON.stringify(body)).byteLength > 60_000) throw new Error('Request body too large');
   return body;
 }
+
+app.route('/', portalSessionRoutes);
 
 // Catalog reads use the existing marketplace schema. Provenance is stored in
 // artworks.metadata_hash; creator names come from the related users record.

@@ -1,6 +1,6 @@
 import React from 'react';
 
-type Room = 'gallery' | 'chess' | 'sports' | 'spaces';
+type Room = 'gallery' | 'chess' | 'sports' | 'spaces' | 'arena';
 
 interface RoomSwitcherProps {
   currentRoom: Room;
@@ -12,6 +12,7 @@ const rooms: { id: Room; label: string }[] = [
   { id: 'chess', label: 'Chess' },
   { id: 'sports', label: 'Sports' },
   { id: 'spaces', label: 'MAX Spaces' },
+  { id: 'arena', label: 'Chess Arena' },
 ];
 
 export default function RoomSwitcher({ currentRoom, onSwitchRoom }: RoomSwitcherProps) {

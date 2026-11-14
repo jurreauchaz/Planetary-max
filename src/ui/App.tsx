@@ -4,8 +4,9 @@ import ChessPage from './pages/ChessPage';
 import SportsPage from './pages/SportsPage';
 import RoomSwitcher from './components/RoomSwitcher';
 import { PortalMasterSpaces } from '../components/PortalMasterSpaces';
+import MaxChessArenaPage from '../pages/MaxChessArenaPage';
 
-type Room = 'gallery' | 'chess' | 'sports' | 'spaces';
+type Room = 'gallery' | 'chess' | 'sports' | 'spaces' | 'arena';
 
 export default function App() {
   const [currentRoom, setCurrentRoom] = useState<Room>('gallery');
@@ -14,6 +15,8 @@ export default function App() {
     <div style={{ position: 'relative', width: '100%', minHeight: '100vh', background: '#0a0a0c', overflow: 'hidden', fontFamily: 'sans-serif' }}>
       {currentRoom === 'spaces' ? (
         <main style={{ minHeight: '100vh', overflowY: 'auto', padding: '1px 0 2rem' }}><PortalMasterSpaces /></main>
+      ) : currentRoom === 'arena' ? (
+        <main style={{ minHeight: '100vh', overflowY: 'auto', padding: '1px 0 5rem' }}><MaxChessArenaPage /></main>
       ) : (
         <main
           key={currentRoom}

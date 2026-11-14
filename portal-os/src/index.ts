@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { apiRoutes } from './gateway/apiRoutes';
 import { SovereignMeshDO } from './mesh/durable';
+import type { SigningBindings } from './security/signingMiddleware';
 
 export { SovereignMeshDO };
 
@@ -12,7 +13,7 @@ export type Bindings = {
   ART_IDENTITY: string;
   PERSONAL_LIQUIDITY_BPS: string;
   TREASURY_INGRESS_TOKEN?: string;
-};
+} & SigningBindings;
 
 const app = new Hono<{ Bindings: Bindings }>();
 

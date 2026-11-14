@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 
-const leagues = ['NFL', 'NBA', 'WNBA', 'MLB', 'SOCCER', 'MMA', 'COLLEGIATE', 'ESPORTS'];
+const leagues = ['NFL', 'NBA', 'MLB', 'SOCCER', 'MMA'];
 
 export default function SportsPage() {
   const [activeLeague, setActiveLeague] = useState('NFL');
 
   return (
-    <main style={{ padding: '2rem', background: '#0a0a0c', color: '#f0f0f5', minHeight: '100vh', fontFamily: 'sans-serif' }}>
+    <div style={{ padding: '2rem', background: '#0a0a0c', color: '#f0f0f5', minHeight: '100%', fontFamily: 'sans-serif' }}>
       <header style={{ borderBottom: '1px solid #222', paddingBottom: '1rem', marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.8rem', fontWeight: 300, letterSpacing: '2px' }}>MAX SPORTS HUD</h1>
           <p style={{ color: '#888', fontSize: '0.9rem' }}>Oracle Telemetry &amp; Predictive NIL Analytics</p>
         </div>
-        <div role="group" aria-label="Select league" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }} aria-label="Select league">
           {leagues.map((league) => (
             <button
               key={league}
@@ -30,6 +30,6 @@ export default function SportsPage() {
         <h2>Active League Feed: {activeLeague}</h2>
         <p style={{ color: '#888', marginTop: '0.5rem' }}>Listening to decentralized oracle consensus feeds and cryptographic match state verifications...</p>
       </section>
-    </main>
+    </div>
   );
 }

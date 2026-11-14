@@ -9,14 +9,12 @@ directory = "./dist"
 binding = "ASSETS"
 
 [vars]
-ENVIRONMENT = "production"
+ENVIRONMENT = "development"
 PROTOCOL_VERSION = "DAT-JURREAUISM-v1"
 PRE_TIER_INDEX = "IDX-PRETIER-001"
 ISOLATE_MEMORY_LIMIT_MB = "128"
 
-# ----------------------------------------------------------------------------
-# 1. DURABLE OBJECTS COGNITIVE MESH (SQLite-Backed ICV Actors)
-# ----------------------------------------------------------------------------
+# Durable Object bindings for the root Worker.
 [[durable_objects.bindings]]
 name = "BEEMAX_MESH_STATE"
 class_name = "CognitiveNodeActor"
@@ -25,11 +23,9 @@ class_name = "CognitiveNodeActor"
 tag = "v1"
 new_sqlite_classes = ["CognitiveNodeActor"]
 
-# ----------------------------------------------------------------------------
-# 2. UNIFIED CLOUDFLARE D1 DATABASE (Microkernel Logs + Sovereign Marketplace)
-# ----------------------------------------------------------------------------
+# Root Worker D1. Replace with the root database's ID; do not reuse Portal-OS D1.
 [[d1_databases]]
 binding = "DB"
-database_name = "beemax-db"
-database_id = "REPLACE_WITH_YOUR_CLOUDFLARE_D1_DATABASE_ID"
-migrations_dir = "src/database"
+database_name = "planetary_max_root_db"
+database_id = "REPLACE_WITH_ROOT_D1_DATABASE_ID"
+migrations_dir = "migrations"

@@ -4,7 +4,7 @@ compatibility_date = "2026-11-01"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-ENVIRONMENT = "production"
+ENVIRONMENT = "development"
 ROOT_IDENTITY = "did:max:root"
 ART_IDENTITY = "did:maxj:art"
 PERSONAL_LIQUIDITY_BPS = "2500"
@@ -12,7 +12,7 @@ PERSONAL_LIQUIDITY_BPS = "2500"
 [[d1_databases]]
 binding = "DB"
 database_name = "max-sovereign-core"
-database_id = "REPLACE_WITH_YOUR_D1_ID"
+database_id = "REPLACE_WITH_PORTAL_OS_D1_DATABASE_ID"
 migrations_dir = "migrations"
 
 [[durable_objects.bindings]]

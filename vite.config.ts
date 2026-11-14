@@ -11,8 +11,14 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // Root storefront/auth APIs are served by the root Worker.
       '/api': {
-        target: 'https://planetary-max.maxijurreau1.workers.dev',
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
+      // Portal-OS runs separately so its D1 binding stays isolated.
+      '/v1': {
+        target: 'http://localhost:8788',
         changeOrigin: true,
       },
     },

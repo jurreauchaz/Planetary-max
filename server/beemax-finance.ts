@@ -2,10 +2,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Bindings } from './types';
 import { verifyNodeSignature } from './middleware';
+import treasuryRouter from './routes/treasury';
 
 const beemaxFinanceRouter = new Hono<{ Bindings: Bindings }>();
 
-// Demo ledger only: these endpoints do not issue vouchers, prove anonymity,
+// Demo-only routes. These endpoints do not issue vouchers, prove anonymity,
 // hold funds, provide liquidity, or execute yield strategies.
 const VoucherSchema = z.object({
   nodeId: z.string().trim().min(1).max(100).regex(/^[\w.:-]+$/),
@@ -16,9 +17,7 @@ const ReinvestSchema = z.object({
   sourceModule: z.enum(['MAX-ART', 'MAX-CHESS', 'MAX-SPORTS']),
   yieldAmount: z.string().trim().regex(/^(?:0|[1-9]\d{0,8})(?:\.\d{1,8})?$/, 'Enter a positive decimal amount for display.'),
 }).strict();
-const RedeemSchema = z.object({
-  voucherId: z.string().trim().min(1).max(100),
-}).strict();
+const RedeemSchema = z.object({ voucherId: z.string().trim().min(1).max(100) }).strict();
 
 async function readJson(c: { req: { header(name: string): string | undefined; json(): Promise<unknown> } }) {
   const contentLength = Number(c.req.header('Content-Length') ?? '0');
@@ -29,12 +28,11 @@ async function readJson(c: { req: { header(name: string): string | undefined; js
 }
 
 beemaxFinanceRouter.use('/v1/beemax/*', verifyNodeSignature);
+beemaxFinanceRouter.route('/', treasuryRouter);
 
 beemaxFinanceRouter.post('/v1/beemax/voucher/mint', async (c) => {
   let parsed;
-  try {
-    parsed = VoucherSchema.safeParse(await readJson(c));
-  } catch (error) {
+  try { parsed = VoucherSchema.safeParse(await readJson(c)); } catch (error) {
     return c.json({ success: false, error: error instanceof Error ? error.message : 'Invalid JSON body.' }, 400);
   }
   if (!parsed.success || Number(parsed.data?.amount) <= 0) {
@@ -63,74 +61,44 @@ beemaxFinanceRouter.post('/v1/beemax/voucher/mint', async (c) => {
 
 beemaxFinanceRouter.post('/v1/beemax/voucher/redeem', async (c) => {
   let parsed;
-  try {
-    parsed = RedeemSchema.safeParse(await readJson(c));
-  } catch (error) {
+  try { parsed = RedeemSchema.safeParse(await readJson(c)); } catch (error) {
     return c.json({ success: false, error: error instanceof Error ? error.message : 'Invalid JSON body.' }, 400);
   }
-  if (!parsed.success) {
-    return c.json({ success: false, error: 'Malformed demo redemption request.', details: parsed.error.flatten() }, 400);
-  }
+  if (!parsed.success) return c.json({ success: false, error: 'Malformed demo redemption request.', details: parsed.error.flatten() }, 400);
 
   const nodeId = c.req.header('X-Max-Node-Id');
   if (!nodeId) return c.json({ success: false, error: 'Unauthorized: missing verified node identity.' }, 401);
   const { voucherId } = parsed.data;
-
   try {
     const voucher = await c.env.DB.prepare(
       `SELECT voucher_id, node_id, display_amount, currency, status
        FROM finance_voucher_demos WHERE voucher_id = ? AND node_id = ? LIMIT 1`,
-    ).bind(voucherId, nodeId).first<{
-      voucher_id: string;
-      node_id: string;
-      display_amount: string;
-      currency: string;
-      status: string;
-    }>();
-
-    if (!voucher) {
-      return c.json({ success: false, simulation: true, error: 'Demo voucher not found or not owned by this verified node.' }, 404);
-    }
-    if (voucher.status !== 'SIMULATED') {
-      return c.json({ success: false, simulation: true, error: 'Demo voucher is not available for redemption.' }, 409);
-    }
+    ).bind(voucherId, nodeId).first<{ voucher_id: string; node_id: string; display_amount: string; currency: string; status: string }>();
+    if (!voucher) return c.json({ success: false, simulation: true, error: 'Demo voucher not found or not owned by this verified node.' }, 404);
+    if (voucher.status !== 'SIMULATED') return c.json({ success: false, simulation: true, error: 'Demo voucher is not available for redemption.' }, 409);
 
     const settledAt = Date.now();
     const result = await c.env.DB.prepare(
       `INSERT INTO finance_voucher_demo_redemptions (voucher_id, node_id, created_at)
-       SELECT ?, ?, ?
-       WHERE EXISTS (
-         SELECT 1 FROM finance_voucher_demos
-         WHERE voucher_id = ? AND node_id = ? AND status = 'SIMULATED'
+       SELECT ?, ?, ? WHERE EXISTS (
+         SELECT 1 FROM finance_voucher_demos WHERE voucher_id = ? AND node_id = ? AND status = 'SIMULATED'
        )`,
     ).bind(voucherId, nodeId, settledAt, voucherId, nodeId).run();
-
-    if (result.meta.changes !== 1) {
-      return c.json({ success: false, simulation: true, error: 'Demo voucher was already redeemed or is no longer available.' }, 409);
-    }
-
+    if (result.meta.changes !== 1) return c.json({ success: false, simulation: true, error: 'Demo voucher was already redeemed or is no longer available.' }, 409);
     return c.json({
-      success: true,
-      simulation: true,
+      success: true, simulation: true,
       message: 'Demo voucher redemption recorded. No funds were transferred or settled.',
-      redemption: {
-        voucherId: voucher.voucher_id,
-        displayAmount: voucher.display_amount,
-        currency: voucher.currency,
-        settledAt,
-      },
+      redemption: { voucherId: voucher.voucher_id, displayAmount: voucher.display_amount, currency: voucher.currency, settledAt },
     });
   } catch (error) {
-    console.error('Unable to record demo voucher redemption:', error);
+    console.error('Unable to record finance voucher demo redemption:', error);
     return c.json({ success: false, simulation: true, error: 'Demo redemption could not be recorded.' }, 503);
   }
 });
 
 beemaxFinanceRouter.post('/v1/beemax/yield/reinvest', async (c) => {
   let parsed;
-  try {
-    parsed = ReinvestSchema.safeParse(await readJson(c));
-  } catch (error) {
+  try { parsed = ReinvestSchema.safeParse(await readJson(c)); } catch (error) {
     return c.json({ success: false, error: error instanceof Error ? error.message : 'Invalid JSON body.' }, 400);
   }
   if (!parsed.success || Number(parsed.data?.yieldAmount) <= 0) {

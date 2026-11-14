@@ -1,7 +1,7 @@
 #:schema node_modules/wrangler/config-schema.json
 name = "planetary-max"
 main = "src/worker.ts"
-compatibility_date = "2026-11-12"
+compatibility_date = "2026-03-01"
 compatibility_flags = ["nodejs_compat"]
 
 [assets]
@@ -16,7 +16,7 @@ ISOLATE_MEMORY_LIMIT_MB = "128"
 
 [[kv_namespaces]]
 binding = "SESSION_KV"
-id = "REPLACE_WITH_SESSION_KV_ID"
+id = "6ead4589e312473c94661e058533360f"
 
 [[d1_databases]]
 binding = "DB"

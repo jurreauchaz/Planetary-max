@@ -4,6 +4,18 @@ import { executeSovereignWaterfall, WaterfallValidationError } from '../finance/
 
 export const apiRoutes = new Hono<{ Bindings: Bindings }>();
 
+apiRoutes.get('/v1/dat/art/list', async (c) => {
+  const result = await c.env.DB.prepare(
+    `SELECT a.dat_id AS id, a.title, e.medium, e.doctrine_tag AS doctrine
+     FROM dat_assets AS a
+     INNER JOIN dat_ext_art AS e ON e.dat_id = a.dat_id
+     WHERE a.domain = 'MAX_ART' AND a.status = 'ACTIVE'
+     ORDER BY a.created_at DESC
+     LIMIT ?`
+  ).bind(100).all();
+  return c.json({ items: result.results ?? [] });
+});
+
 apiRoutes.get('/v1/dat/:datId', async (c) => {
   const datId = c.req.param('datId');
   const session = c.env.DB.withSession('first-primary');

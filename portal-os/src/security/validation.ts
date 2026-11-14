@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
-const sovereignDid = z.string().regex(/^DID-[A-Z0-9-]+$/, 'Invalid Sovereign DID format');
-const artifactUri = z.string().url('Invalid artifact URI').refine(
-  (value) => value.startsWith('https://') || value.startsWith('ipfs://') || value.startsWith('ar://'),
-  'Artifact URI must use HTTPS, IPFS, or Arweave',
-);
+// Accept canonical runtime DIDs and uppercase legacy identifiers. Values are
+// normalized after validation so downstream storage uses a consistent form.
+const SovereignDIDRegex = /^(did:[a-z0-9-]+:[a-z0-9-]+|DID-[A-Z0-9-]+)$/;
+const ArtifactUriRegex = /^(https?:\/\/|ipfs:\/\/|ar:\/\/)[^\s]+$/;
+
+const sovereignDid = z.string().regex(SovereignDIDRegex, 'Invalid Sovereign DID format');
+const artifactUri = z.string().regex(ArtifactUriRegex, 'Invalid artifact URI');
 
 export const ArtMintSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200, 'Title too long'),
@@ -19,9 +21,16 @@ export const ArtMintSchema = z.object({
   royaltyBps: z.number().int().min(0).max(5_000).default(1_000),
 }).superRefine((value, context) => {
   if (value.editionNumber > value.editionTotal) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ['editionTotal'], message: 'Must be greater than or equal to editionNumber' });
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['editionTotal'],
+      message: 'Must be greater than or equal to editionNumber',
+    });
   }
-});
+}).transform((data) => ({
+  ...data,
+  originatorId: data.originatorId.toLowerCase(),
+}));
 
 export const ChessMintSchema = z.object({
   title: z.string().min(1).max(200),
@@ -34,22 +43,36 @@ export const ChessMintSchema = z.object({
   originatorId: sovereignDid,
   artifactUri,
   royaltyBps: z.number().int().min(0).max(5_000).default(500),
-});
+}).transform((data) => ({
+  ...data,
+  whitePlayerId: data.whitePlayerId.toLowerCase(),
+  blackPlayerId: data.blackPlayerId.toLowerCase(),
+  originatorId: data.originatorId.toLowerCase(),
+}));
 
 export const SportsMintSchema = z.object({
   title: z.string().min(1).max(200),
   league: z.enum(['NFL', 'NBA', 'WNBA', 'MLB', 'SOCCER', 'MMA', 'COLLEGIATE', 'ESPORTS']),
   matchExternalId: z.string().min(1).max(100),
   artifactCategory: z.enum(['PREDICTION_MODEL', 'TELEMETRY_FEED', 'NIL_CONTRACT', 'PERFORMANCE_PROOF']),
-  oracleConsensusJson: z.string().min(2, 'Valid JSON oracle consensus required').max(50_000).refine((value) => {
-    try { return Array.isArray(JSON.parse(value)); } catch { return false; }
-  }, 'Oracle consensus must be a JSON array'),
+  oracleConsensusJson: z.string().min(2).max(50_000).refine((value) => {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) &&
+        ('consensus' in parsed || 'signatures' in parsed);
+    } catch {
+      return false;
+    }
+  }, 'Invalid or unverified oracle consensus JSON structure'),
   seasonYear: z.number().int().min(2020).max(2035),
   rawPayloadString: z.string().min(1).max(50_000),
   originatorId: sovereignDid,
   artifactUri,
   royaltyBps: z.number().int().min(0).max(5_000).default(1_000),
-});
+}).transform((data) => ({
+  ...data,
+  originatorId: data.originatorId.toLowerCase(),
+}));
 
 export function validatePayload<T>(schema: z.ZodType<T>, data: unknown):
   { success: true; data: T } | { success: false; error: string } {

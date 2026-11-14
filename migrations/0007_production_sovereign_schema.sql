@@ -9,7 +9,9 @@ ALTER TABLE users ADD COLUMN email TEXT;
 ALTER TABLE users ADD COLUMN password_salt TEXT;
 ALTER TABLE users ADD COLUMN display_name TEXT;
 ALTER TABLE users ADD COLUMN public_key TEXT;
-ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+-- SQLite does not allow a non-constant default when adding a column.
+ALTER TABLE users ADD COLUMN updated_at TEXT;
+UPDATE users SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE updated_at IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
@@ -17,13 +19,15 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 -- values or artist-profile relationship.
 ALTER TABLE artworks ADD COLUMN currency TEXT NOT NULL DEFAULT 'DAT';
 ALTER TABLE artworks ADD COLUMN metadata_hash TEXT;
-ALTER TABLE artworks ADD COLUMN updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+ALTER TABLE artworks ADD COLUMN updated_at TEXT;
+UPDATE artworks SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE updated_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_artworks_artist_id ON artworks(artist_id);
 CREATE INDEX IF NOT EXISTS idx_artworks_status ON artworks(status);
 
 -- Limited-edition slots are created by migration 0005. Add the update timestamp
 -- and retain its existing uniqueness and inventory constraints.
-ALTER TABLE artwork_editions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+ALTER TABLE artwork_editions ADD COLUMN updated_at TEXT;
+UPDATE artwork_editions SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE updated_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_artwork_editions_base_id ON artwork_editions(artwork_base_id);
 CREATE INDEX IF NOT EXISTS idx_artwork_editions_owner_id ON artwork_editions(owner_id);
 
@@ -31,7 +35,8 @@ CREATE INDEX IF NOT EXISTS idx_artwork_editions_owner_id ON artwork_editions(own
 ALTER TABLE marketplace_orders ADD COLUMN edition_id TEXT REFERENCES artwork_editions(id) ON DELETE RESTRICT;
 ALTER TABLE marketplace_orders ADD COLUMN currency TEXT NOT NULL DEFAULT 'DAT';
 ALTER TABLE marketplace_orders ADD COLUMN escrow_expires_at TEXT;
-ALTER TABLE marketplace_orders ADD COLUMN updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+ALTER TABLE marketplace_orders ADD COLUMN updated_at TEXT;
+UPDATE marketplace_orders SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE updated_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_orders_artwork_id ON marketplace_orders(artwork_id);
 CREATE INDEX IF NOT EXISTS idx_orders_buyer_id ON marketplace_orders(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON marketplace_orders(payment_status);

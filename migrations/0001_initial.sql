@@ -1,3 +1,7 @@
+PRAGMA foreign_keys = ON;
+
+BEGIN TRANSACTION;
+
 -- Core mesh tables
 CREATE TABLE IF NOT EXISTS node_telemetry (
   node_id TEXT PRIMARY KEY,
@@ -45,3 +49,5 @@ CREATE TABLE IF NOT EXISTS qal_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_qal_sessions_node ON qal_sessions(node_id);
 CREATE INDEX IF NOT EXISTS idx_qal_sessions_expiry ON qal_sessions(expires_at);
+
+COMMIT;

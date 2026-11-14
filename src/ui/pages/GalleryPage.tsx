@@ -1,30 +1,33 @@
 import React, { useEffect, useState } from 'react';
 
-type ArtAsset = {
+interface ArtAsset {
   id: string;
   title: string;
+  artist_name: string;
   medium: string;
-  doctrine?: string | null;
-};
-
-const fallbackArt: ArtAsset[] = [
-  { id: 'DAT-ART-01', title: 'Sideros-Friction Study I', medium: 'CHARCOAL_ON_CANVAS', doctrine: 'JURREAUISM' },
-  { id: 'DAT-ART-02', title: 'The Crown of Return', medium: 'DIGITAL_CANVAS', doctrine: 'JURREAUISM' },
-];
+  dimensions: string | null;
+  image_url: string;
+  status: 'available' | 'reserved' | 'sold';
+}
 
 export default function GalleryPage() {
-  const [artAssets, setArtAssets] = useState<ArtAsset[]>([]);
+  const [artworks, setArtworks] = useState<ArtAsset[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let active = true;
-    fetch('/v1/dat/art/list')
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Unable to load the MAX Art collection.');
-        return res.json() as Promise<{ items?: ArtAsset[] }>;
+    const controller = new AbortController();
+    fetch('/api/artworks', { signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json() as { artworks?: ArtAsset[]; error?: string };
+        if (!response.ok) throw new Error(data.error || 'Unable to load the gallery.');
+        setArtworks(Array.isArray(data.artworks) ? data.artworks : []);
       })
-      .then((data) => { if (active) setArtAssets(data.items ?? []); })
-      .catch(() => { if (active) setArtAssets(fallbackArt); });
-    return () => { active = false; };
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to load the gallery.');
+      })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, []);
 
   return (
@@ -33,15 +36,23 @@ export default function GalleryPage() {
         <h1 style={{ fontSize: '1.8rem', fontWeight: 300, letterSpacing: '2px' }}>MAX ART GALLERY</h1>
         <p style={{ color: '#888', fontSize: '0.9rem' }}>JURREAUISM Digital &amp; Physical Curation Space</p>
       </header>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
-        {artAssets.map((art) => (
-          <article key={art.id} style={{ background: '#121216', border: '1px solid #222', padding: '1.5rem', borderRadius: '8px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '1px' }}>{art.medium}</span>
-            <h2 style={{ margin: '0.5rem 0', fontSize: '1.2rem' }}>{art.title}</h2>
-            <p style={{ fontSize: '0.85rem', color: '#aaa' }}>Doctrine: {art.doctrine || 'JURREAUISM'}</p>
-          </article>
-        ))}
-      </div>
+      {loading ? <p role="status">Loading artworks…</p> : error ? <p role="alert">{error}</p> : artworks.length === 0 ? (
+        <p style={{ color: '#aaa' }}>No artworks are listed yet.</p>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1.5rem' }}>
+          {artworks.map((art) => (
+            <article key={art.id} style={{ overflow: 'hidden', background: '#121216', border: '1px solid #222', borderRadius: '8px' }}>
+              {art.image_url && <img src={art.image_url} alt={art.title} loading="lazy" style={{ display: 'block', width: '100%', height: '220px', objectFit: 'cover' }} />}
+              <div style={{ padding: '1.25rem' }}>
+                <span style={{ fontSize: '0.75rem', color: '#60a5fa', textTransform: 'uppercase' }}>{art.medium}</span>
+                <h2 style={{ margin: '0.5rem 0', fontSize: '1.2rem' }}>{art.title}</h2>
+                <p style={{ color: '#aaa' }}>By {art.artist_name}{art.dimensions ? ` · ${art.dimensions}` : ''}</p>
+                <p style={{ color: '#9ca3af', fontSize: '0.8rem' }}>{art.status}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

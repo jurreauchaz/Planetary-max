@@ -1,25 +1,21 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Bindings } from './types';
+import { verifyNodeSignature } from './middleware';
 
 const beemaxFinanceRouter = new Hono<{ Bindings: Bindings }>();
 
 // Demo ledger only: these endpoints do not issue vouchers, prove anonymity,
 // hold funds, provide liquidity, or execute yield strategies.
 const VoucherSchema = z.object({
-  nodeId: z.string().trim().min(1).max(100).regex(/^[\w.:-]+$/),
-  amount: z.string().trim().regex(/^(?:0|[1-9]\d{0,8})(?:\.\d{1,8})?$/, 'Enter a positive decimal amount for display.'),
+  nodeId: z.string().trim().min(1).max(100).regex(/^[\\w.:-]+$/),
+  amount: z.string().trim().regex(/^(?:0|[1-9]\\d{0,8})(?:\\.\\d{1,8})?$/, 'Enter a positive decimal amount for display.'),
   currency: z.enum(['USDC', 'USDT']).default('USDC'),
 }).strict();
 const ReinvestSchema = z.object({
   sourceModule: z.enum(['MAX-ART', 'MAX-CHESS', 'MAX-SPORTS']),
-  yieldAmount: z.string().trim().regex(/^(?:0|[1-9]\d{0,8})(?:\.\d{1,8})?$/, 'Enter a positive decimal amount for display.'),
+  yieldAmount: z.string().trim().regex(/^(?:0|[1-9]\\d{0,8})(?:\\.\\d{1,8})?$/, 'Enter a positive decimal amount for display.'),
 }).strict();
-
-function sameOriginWrite(c: { req: { header(name: string): string | undefined; url: string } }) {
-  const origin = c.req.header('Origin');
-  return Boolean(origin && origin === new URL(c.req.url).origin);
-}
 
 async function readJson(c: { req: { header(name: string): string | undefined; json(): Promise<unknown> } }) {
   const contentLength = Number(c.req.header('Content-Length') ?? '0');
@@ -29,9 +25,9 @@ async function readJson(c: { req: { header(name: string): string | undefined; js
   return body;
 }
 
-beemaxFinanceRouter.post('/v1/beemax/voucher/mint', async (c) => {
-  if (!sameOriginWrite(c)) return c.json({ success: false, error: 'A same-origin request is required.' }, 403);
+beemaxFinanceRouter.use('/v1/beemax/*', verifyNodeSignature);
 
+beemaxFinanceRouter.post('/v1/beemax/voucher/mint', async (c) => {
   let parsed;
   try {
     parsed = VoucherSchema.safeParse(await readJson(c));
@@ -45,13 +41,11 @@ beemaxFinanceRouter.post('/v1/beemax/voucher/mint', async (c) => {
   const { nodeId, amount, currency } = parsed.data;
   const voucherId = crypto.randomUUID();
   const timestamp = Date.now();
-
   try {
     await c.env.DB.prepare(
       `INSERT INTO finance_voucher_demos (voucher_id, node_id, display_amount, currency, status, created_at)
        VALUES (?, ?, ?, ?, 'SIMULATED', ?)`
     ).bind(voucherId, nodeId, amount, currency, timestamp).run();
-
     return c.json({
       success: true,
       simulation: true,
@@ -65,8 +59,6 @@ beemaxFinanceRouter.post('/v1/beemax/voucher/mint', async (c) => {
 });
 
 beemaxFinanceRouter.post('/v1/beemax/yield/reinvest', async (c) => {
-  if (!sameOriginWrite(c)) return c.json({ success: false, error: 'A same-origin request is required.' }, 403);
-
   let parsed;
   try {
     parsed = ReinvestSchema.safeParse(await readJson(c));
@@ -80,13 +72,11 @@ beemaxFinanceRouter.post('/v1/beemax/yield/reinvest', async (c) => {
   const { sourceModule, yieldAmount } = parsed.data;
   const id = crypto.randomUUID();
   const timestamp = Date.now();
-
   try {
     await c.env.DB.prepare(
       `INSERT INTO finance_yield_demos (id, source_module, display_amount, created_at)
        VALUES (?, ?, ?, ?)`
     ).bind(id, sourceModule, yieldAmount, timestamp).run();
-
     return c.json({
       success: true,
       simulation: true,

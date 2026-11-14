@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 
 import type { Bindings } from './types';
+import beemaxFinanceRouter from './beemax-finance';
 
 const app = new Hono<{ Bindings: Bindings }>();
 const leagues = ['NFL', 'NBA', 'MLB', 'SOCCER', 'MMA'] as const;
@@ -156,6 +157,8 @@ app.post('/v1/dat/sports', async (c) => {
     return c.json({ success: false, error: 'Sports telemetry could not be saved. The event ID may already exist.' }, 409);
   }
 });
+
+app.route('/', beemaxFinanceRouter);
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/') || c.req.path.startsWith('/v1/')) return c.json({ error: 'Not found' }, 404);

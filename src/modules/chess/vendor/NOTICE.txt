@@ -1,0 +1,2 @@
+chess.js 1.4.0 — Copyright Jeff Hlywa and contributors. BSD 2-Clause license in CHESS-LICENSE.txt. Source: https://github.com/jhlywa/chess.js/tree/ce1ff9e9fc342984ff75ca475ab39f37888cb28a
+Stockfish.js 10.0.2 — Copyright the Stockfish and stockfish.js contributors. GPL-3.0 license in STOCKFISH-LICENSE.txt. Corresponding source: https://github.com/niklasf/stockfish.js/tree/e105072e84cf8ee5dd5219e2c5be29c3b8bf8a5a

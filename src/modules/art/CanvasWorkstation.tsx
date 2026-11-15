@@ -1,0 +1,7 @@
+import React, { useState } from 'react';
+import type { Artwork } from '../../shared/types';
+export function ArtworkVisual({art,large=false,showLayer=true}:{art:Artwork;large?:boolean;showLayer?:boolean}) { return <div className={`art-visual ${art.palette} ${large?'large':''}`} role="img" aria-label={`Abstract preview of ${art.title}`}><div className="art-shape shape-one"/>{showLayer&&<><div className="art-shape shape-two"/><div className="art-shape shape-three"/></>}<div className="art-grain"/><span className="art-signature">MAXJ / {art.year}</span></div>; }
+export default function CanvasWorkstation({art}:{art:Artwork}) {
+ const [watermark,setWatermark]=useState(true);const [layer,setLayer]=useState(true);
+ return <div className="workstation"><div className="workstation-stage"><ArtworkVisual art={art} large showLayer={layer}/>{watermark&&<span className="watermark">MAXJ · PROVENANCE PREVIEW</span>}</div><div className="workstation-controls"><div><span className="micro-label">CANVAS WORKSTATION / LOCAL PREVIEW</span><h3>{art.title}</h3><p>{art.medium} · {art.year}</p></div><div className="layer-controls"><button aria-pressed={layer} onClick={()=>setLayer(!layer)}>{layer?'◉':'○'} Composition layer</button><button aria-pressed={watermark} onClick={()=>setWatermark(!watermark)}>{watermark?'◉':'○'} MaxJ watermark</button></div><p className="quiet">{layer?'Composition layer visible':'Composition layer hidden'} · Watermark is a visual overlay, not a provenance certificate.</p></div></div>;
+}

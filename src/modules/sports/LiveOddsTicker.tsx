@@ -1,0 +1,3 @@
+import React, { useEffect, useState } from 'react';
+const values=[['BOS / NYK','BOS',-3.5],['LAL / GSW','GSW',2.5],['KC / BUF','BUF',-1.5],['MIA / PHI','MIA',4.0]] as const;
+export default function LiveOddsTicker(){const [tick,setTick]=useState(0);useEffect(()=>{const timer=window.setInterval(()=>setTick(n=>n+1),5000);return()=>clearInterval(timer)},[]);return <div className="odds-ticker"><strong><i className="live-dot"/> SIMULATED TICKER</strong>{values.map(([game,team,base],i)=>{const odds=base+(((tick+i)%3)-1)*.5;return <span key={game}>{game} <b>{team} {odds>0?'+':''}{odds.toFixed(1)}</b> <em>{(tick+i)%2?'↗':'↘'}</em></span>})}</div>}

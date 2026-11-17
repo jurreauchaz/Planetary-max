@@ -2,10 +2,11 @@ import { createRequire } from 'node:module';
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 import { readFileSync } from 'node:fs';
 import { Wallet } from 'ethers';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../../index';
 import { EIP712_DOMAIN, EIP712_TYPES, ORDER_TYPES, RELEASE_TYPES } from '../eip712';
 import { hmac } from '../marketplace';
+import { executeWalletCheckout, signEscrowApproval, submitEscrowRelease } from '../../src/hooks/useWalletCheckout';
 const buyer = new Wallet('0x' + '11'.repeat(32));
 const artist = new Wallet('0x' + '22'.repeat(32));
 const admin = new Wallet('0x' + '33'.repeat(32));
@@ -157,5 +158,74 @@ describe('signed marketplace orders and settlement', () => {
     expect((db.prepare('SELECT escrow_release_id FROM marketplace_orders WHERE id = ?').get(orderId) as any).escrow_release_id).toBeNull();
     expect((db.prepare('SELECT status FROM artwork_editions WHERE id = ?').get('art_001:edition:1') as any).status).toBe('reserved');
     expect(db.prepare('SELECT * FROM escrow_signatures').all()).toHaveLength(0);
+  });
+});
+
+
+afterEach(() => vi.unstubAllGlobals());
+function browser(wallet = buyer, chainId = '0x1', rejected = false) {
+  const calls: string[] = [];
+  vi.stubGlobal('location', { origin: 'https://market.test' });
+  vi.stubGlobal('fetch', async (path: string, init: RequestInit) => { calls.push(path); return app.request(`https://market.test${path}`, init, env); });
+  const injected = { request: async ({ method, params }: { method: string; params?: any }) => {
+    if (method === 'eth_chainId') return chainId;
+    if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [wallet.address];
+    if (method === 'eth_signTypedData_v4') {
+      if (rejected) throw Object.assign(new Error('User rejected signing'), { code: 4001 });
+      const { domain, types, message } = JSON.parse(params[1]);
+      delete types.EIP712Domain;
+      return wallet.signTypedData(domain, types, message);
+    }
+    throw new Error(`Unexpected wallet method: ${method}`);
+  } };
+  return { injected, calls };
+}
+describe('browser wallet checkout against the real Worker router', () => {
+  it('signs server-priced terms, waits for HMAC settlement, then collects two compatible approvals', async () => {
+    const { injected } = browser();
+    const result = await executeWalletCheckout('buyer', 'art_001', injected);
+    orderId = result.orderId;
+    expect(result.payment_status).toBe('pending');
+    await expect(signEscrowApproval('buyer', orderId, undefined, injected)).rejects.toThrow('Verified payment');
+    await settle();
+    const first = await signEscrowApproval('buyer', orderId, undefined, injected);
+    await expect(submitEscrowRelease(first)).rejects.toThrow('Artist and Buyer/Admin');
+    const second = await signEscrowApproval('artist_1', orderId, first, browser(artist).injected);
+    expect(second.deadline).toBe(first.deadline);
+    const released = await submitEscrowRelease(second);
+    expect(released.funds_transferred).toBe(false);
+    expect(db.prepare('SELECT * FROM provenance_certificates').all()).toHaveLength(1);
+    await expect(submitEscrowRelease(second)).rejects.toThrow('not eligible');
+  });
+  it('rejects the wrong connected wallet and network before creating an order', async () => {
+    await expect(executeWalletCheckout('buyer', 'art_001', browser(artist).injected)).rejects.toThrow('registered');
+    await expect(executeWalletCheckout('buyer', 'art_001', browser(buyer, '0x2105').injected)).rejects.toThrow('mainnet');
+    expect(db.prepare('SELECT * FROM marketplace_orders').all()).toHaveLength(0);
+  });
+  it('does not submit orders when the signer rejects or no wallet is available', async () => {
+    const { injected, calls } = browser(buyer, '0x1', true);
+    await expect(executeWalletCheckout('buyer', 'art_001', injected)).rejects.toThrow();
+    vi.stubGlobal('ethereum', undefined);
+    await expect(executeWalletCheckout('buyer', 'art_001')).rejects.toThrow('No injected');
+    expect(calls).not.toContain('/api/orders/create');
+  });
+  it('rejects changed audiences and unavailable/unregistered checkout previews', async () => {
+    const { injected } = browser();
+    await expect(executeWalletCheckout('missing', 'art_001', injected)).rejects.toThrow('registered');
+    await expect(executeWalletCheckout('buyer', 'missing', injected)).rejects.toThrow('unavailable');
+    vi.stubGlobal('location', { origin: 'https://other.test' });
+    await expect(executeWalletCheckout('buyer', 'art_001', injected)).rejects.toThrow('audience');
+  });
+  it('rejects a different order, expired packet and unauthorized release signer', async () => {
+    const { injected } = browser();
+    orderId = (await executeWalletCheckout('buyer', 'art_001', injected)).orderId;
+    await settle();
+    const first = await signEscrowApproval('buyer', orderId, undefined, injected);
+    await expect(signEscrowApproval('buyer', 'other', first, injected)).rejects.toThrow('different order');
+    await expect(signEscrowApproval('buyer', orderId, { ...first, deadline: 1 }, injected)).rejects.toThrow('expired');
+    db.prepare("UPDATE users SET role = 'user' WHERE id = 'admin'").run();
+    await expect(signEscrowApproval('admin', orderId, first, browser(admin).injected)).rejects.toThrow('Only the Artist');
+    const refreshed = await signEscrowApproval('buyer', orderId, first, injected);
+    expect(refreshed.signatures).toHaveLength(1);
   });
 });

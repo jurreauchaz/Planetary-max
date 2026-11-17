@@ -1,5 +1,7 @@
 <!-- coderabbit-ai-generated:v1 -->
 
+<!-- coderabbit-ai-generated-section:v1:0930f61137df47627a2cc2b99de04028ebe381b4cfedb367b9ea99bf7bf13dbe -->
+
 # Marketplace settlement API
 
 Requires migration 0021 and Node 24 for tests. Existing records retain their statuses; new orders progress from pending to completed upon verified HMAC settlement. Escrow release is recorded separately in escrow_released_at.
@@ -58,3 +60,17 @@ npm run deploy
 ```
 
 Keep PROVENANCE_SECRET available for verification of issued certificates. Existing databases use migrations, not a schema.sql import. The supplied domain does not configure live hostname routing; the intended hostname and authenticated Cloudflare access are still required. SPA fallback remains configured in wrangler.toml.
+
+
+## Browser wallet checkout and approval packets
+
+The storefront now uses signed marketplace orders instead of the legacy email-only checkout intent. Legacy endpoints remain available for their existing callers. Enter the trusted, pre-provisioned user ID, then choose an available artwork. POST /api/orders/prepare reads the active registered key and selects the first available edition at its database price. It returns the signing wallet and canonical CreateOrder value with a fresh UUID nonce, four minute deadline and request-origin audience; this preview makes no reservation. The browser signs those terms and posts to /api/orders/create. Reservation races and key/price changes are checked again by that write route.
+
+src/hooks/useWalletCheckout.ts uses ethers BrowserProvider with an injected EIP1193 wallet, checks the connected address against the registered wallet, and requires the shared domain's Ethereum mainnet chain ID. All signing fields use server/eip712.ts. This signs a reservation; no transaction or payment transfer is requested. WalletConnect session creation requires separate project configuration and is not installed; the functions also accept an already-connected EIP1193 provider.
+
+After an authenticated settlement webhook marks payment completed, enter the order ID under Escrow approvals. POST /api/escrow/prepare returns the canonical ReleaseEscrow value only for an active registered Artist, Buyer or Admin on an eligible order. The first signer starts a packet; subsequent signers paste that packet and sign with its same deadline. Copy the JSON between signers and submit the collected quorum before expiry. Clear the packet to start a new signing window; every signer must sign again. Packets are held in component memory, and signatures are bearer approvals for their signed terms until expiry. No private keys leave the wallet.
+
+The previews do not authenticate a session or grant authority: the write endpoints still recover every signature and recheck the database keys, quorum, payment receipt, reservation and order state. A release mints provenance and records escrow state, with funds_transferred false; it is not a financial payout.
+
+
+<!-- /coderabbit-ai-generated:v1 -->

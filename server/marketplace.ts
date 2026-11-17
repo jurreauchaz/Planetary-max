@@ -38,6 +38,48 @@ interface Order {
   edition_number: number; total_editions: number; amount_cents: number; currency: string;
   payment_status: string; escrow_release_id: string | null; escrow_expires_at: string | null;
 }
+// Read-only signing previews. Identity and settlement are still enforced by the signed write routes.
+router.post('/api/orders/prepare', async c => {
+  let input;
+  try { input = z.object({ userId: id, artworkId: id }).strict().parse(await json(c)); }
+  catch { return c.json({ error: 'A registered user and artwork are required.' }, 400); }
+  try {
+    const user = await c.env.DB.prepare("SELECT id, public_key, role FROM users WHERE id = ? AND status = 'active'").bind(input.userId).first<User>();
+    const wallet = address(user?.public_key ?? null);
+    if (!wallet) return c.json({ error: 'An active registered signing key is required.' }, 403);
+    const item = await c.env.DB.prepare(`SELECT e.id AS editionId, a.price_cents, a.currency FROM artworks a
+      JOIN artwork_editions e ON e.artwork_base_id = a.id WHERE a.id = ? AND a.status = 'available'
+      AND e.status = 'available' ORDER BY e.edition_number LIMIT 1`).bind(input.artworkId).first<{ editionId: string; price_cents: number; currency: string }>();
+    if (!item || !Number.isSafeInteger(item.price_cents) || item.price_cents <= 0) return c.json({ error: 'Edition is unavailable.' }, 409);
+    c.header('Cache-Control', 'no-store');
+    return c.json({ domain: EIP712_DOMAIN, types: ORDER_TYPES, wallet, value: {
+      ...input, editionId: item.editionId, amountCents: item.price_cents, currency: item.currency,
+      nonce: crypto.randomUUID(), deadline: Math.floor(Date.now() / 1000) + 240, audience: new URL(c.req.url).origin,
+    } });
+  } catch { return c.json({ error: 'Signing preview is unavailable.' }, 503); }
+});
+
+router.post('/api/escrow/prepare', async c => {
+  let input;
+  try { input = z.object({ userId: id, orderId: id, deadline: deadline.optional() }).strict().parse(await json(c)); }
+  catch { return c.json({ error: 'A registered signer and order are required.' }, 400); }
+  const expires = input.deadline ?? Math.floor(Date.now() / 1000) + 240;
+  if (!timely(expires)) return c.json({ error: 'Approval packet expired. Start a new packet.' }, 401);
+  try {
+    const user = await c.env.DB.prepare("SELECT id, public_key, role FROM users WHERE id = ? AND status = 'active'").bind(input.userId).first<User>();
+    const wallet = address(user?.public_key ?? null);
+    if (!user || !wallet) return c.json({ error: 'An active registered signing key is required.' }, 403);
+    const order = await c.env.DB.prepare(`SELECT o.*, a.artist_id FROM marketplace_orders o JOIN artworks a ON a.id = o.artwork_id WHERE o.id = ?`).bind(input.orderId).first<Order>();
+    if (!order) return c.json({ error: 'Order not found.' }, 404);
+    if (user.id !== order.artist_id && user.id !== order.buyer_id && user.role !== 'admin') return c.json({ error: 'Only the Artist, Buyer or a registered Admin may approve.' }, 403);
+    if (order.payment_status !== 'completed' || order.escrow_release_id || (order.escrow_expires_at && !(Date.parse(order.escrow_expires_at) > Date.now()))) return c.json({ error: 'Verified payment and an unreleased, unexpired order are required.' }, 409);
+    c.header('Cache-Control', 'no-store');
+    return c.json({ domain: EIP712_DOMAIN, types: RELEASE_TYPES, wallet, value: {
+      orderId: order.id, artworkId: order.artwork_id, editionId: order.edition_id, buyerId: order.buyer_id,
+      amountCents: order.amount_cents, currency: order.currency, deadline: expires, audience: new URL(c.req.url).origin,
+    } });
+  } catch { return c.json({ error: 'Signing preview is unavailable.' }, 503); }
+});
 router.on('POST', ['/api/orders/create', '/api/marketplace/orders'], async c => {
   let input;
   try { input = z.object({ userId: id, artworkId: id, editionId: id,

@@ -1,7 +1,34 @@
 import React, { useState } from 'react';
-import type { Artwork } from '../../shared/types';
-import MarketplaceStorefront from './MarketplaceStorefront';
-import CanvasWorkstation from './CanvasWorkstation';
-import WindowFrame from '../../core/WindowFrame';
-export const artworks: Artwork[]=[{id:'01',title:'The space between',artist:'MaxJ',medium:'Digital canvas',year:'2024',palette:'palette-one',category:'Abstract'},{id:'02',title:'Sideros / friction',artist:'MaxJ',medium:'Mixed media',year:'2024',palette:'palette-two',category:'Mixed media'},{id:'03',title:'Beyond the form',artist:'MaxJ',medium:'Digital canvas',year:'2025',palette:'palette-three',category:'Digital'},{id:'04',title:'A quiet becoming',artist:'MaxJ',medium:'Digital canvas',year:'2025',palette:'palette-four',category:'Abstract'}];
-export default function ArtGalleryView(){const [filter,setFilter]=useState('All works');const [selected,setSelected]=useState<Artwork|null>(null);return <div className="module-view"><div className="module-heading"><div><span className="eyebrow">01 / MAX-ART · CREATIVE DOMAIN</span><h1>Art without <em>edges.</em></h1><p>A space for original ideas, new perspectives, and everything in between.</p></div><span className="outline-pill">✳ &nbsp; CURATED BY MAXJ</span></div><div className="filter-row"><div><span className="micro-label">THE COLLECTION</span><h2>Selected works <sup>04</sup></h2></div><div className="filter-group">{['All works','Abstract','Digital','Mixed media'].map(f=><button key={f} className={filter===f?'active':''} onClick={()=>setFilter(f)}>{f}</button>)}</div></div><div className="art-grid">{artworks.filter(a=>filter==='All works'||a.category===filter).map(a=><MarketplaceStorefront key={a.id} art={a} onInspect={()=>setSelected(a)}/>)}</div><p className="quiet gallery-note">Illustrative collection · Asset previews are local to this interface.</p>{selected&&<WindowFrame title="CANVAS WORKSTATION" onClose={()=>setSelected(null)}><CanvasWorkstation art={selected}/></WindowFrame>}</div>}
+import { useArtworks } from '../../hooks/useArtworks';
+
+export default function ArtGalleryView() {
+  const { artworks, loading, error } = useArtworks();
+  const [email, setEmail] = useState('');
+  const [pending, setPending] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+  async function checkout(itemId: string) {
+    setPending(itemId); setMessage('');
+    try {
+      const response = await fetch('/api/sovereign/checkout', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: itemId, buyer_email: email }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Checkout failed');
+      setMessage(`${data.message} Reference: ${data.transaction.reference}`);
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Checkout failed'); }
+    finally { setPending(null); }
+  }
+  return <section className="module-view">
+    <div className="module-heading"><div><span className="eyebrow">01 / MAX-ART</span><h1>Sovereign <em>collection.</em></h1><p>Artwork inventory from the sovereign catalog.</p></div></div>
+    <label>Collector email <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" /></label>
+    {message && <p role="status">{message}</p>}
+    {loading ? <p role="status">Loading collection…</p> : error ? <p role="alert">{error}</p> : !artworks.length ? <p>No artworks available.</p> :
+      <div className="art-grid">{artworks.map(art => <article className="art-card" key={art.id}>
+        <img src={art.image_url} alt={art.title} loading="lazy" style={{ width: '100%', height: 260, objectFit: 'cover' }} />
+        <div className="art-card-caption"><div><h2>{art.title}</h2><p>{art.artist_name} · {art.medium}</p><p>{(art.price_cents / 100).toFixed(2)} {art.currency} · {art.status}</p>
+          <button disabled={pending !== null || art.status !== 'available' || !email} onClick={() => void checkout(art.id)}>{pending === art.id ? 'Recording…' : 'Request checkout'}</button>
+        </div></div>
+      </article>)}</div>}
+  </section>;
+}

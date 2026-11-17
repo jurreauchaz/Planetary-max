@@ -1,3 +1,4 @@
+import { Chess } from '../src/modules/chess/vendor/chess.js';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { sign, jwt } from 'hono/jwt';
@@ -21,6 +22,7 @@ const BASE_CHAIN_ID = 8453n;
 const TRANSFER_EVENT_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
 const ArtworkSchema = z.object({
+  category: z.string().trim().min(1).max(100).default('Digital'),
   creator: z.string().trim().min(1).max(100),
   title: z.string().trim().min(1).max(200),
   medium: z.string().trim().min(1).max(100),
@@ -77,7 +79,8 @@ app.get('/api/artworks', async (c) => {
     const { results } = await c.env.DB.prepare(
       `SELECT a.id, a.artist_id, a.title, u.username AS artist_name,
               ap.bio, ap.portfolio_url, a.medium, a.dimensions, a.price_cents,
-              a.image_url, a.status, a.metadata_hash AS provenance_hash
+              a.image_url, a.status, a.currency, a.category, a.created_at,
+              COALESCE(NULLIF(a.artist, ''), u.username) AS artist, a.metadata_hash AS provenance_hash
        FROM artworks a JOIN users u ON u.id = a.artist_id
        LEFT JOIN artist_profiles ap ON ap.user_id = a.artist_id
        ORDER BY a.created_at DESC LIMIT 100`
@@ -102,14 +105,62 @@ app.post('/api/artworks', async (c) => {
     const creator = await c.env.DB.prepare('SELECT id FROM users WHERE id = ? OR username = ? LIMIT 1').bind(input.creator, input.creator).first<{ id: string }>();
     if (!creator) return c.json({ success: false, error: 'Creator account was not found. Use an existing artist account username or ID.' }, 400);
     await c.env.DB.prepare(
-      `INSERT INTO artworks (id, artist_id, title, medium, dimensions, price_cents, currency, image_url, status, metadata_hash)
-       VALUES (?, ?, ?, ?, ?, ?, 'DAT', ?, 'available', ?)`
-    ).bind(crypto.randomUUID(), creator.id, input.title, input.medium, input.dimensions, input.price_cents, input.image_url, input.provenance_hash.replace(/^0x/i, '').toLowerCase()).run();
+      `INSERT INTO artworks (id, artist_id, title, medium, dimensions, price_cents, currency, image_url, status, metadata_hash, artist, category)
+       VALUES (?, ?, ?, ?, ?, ?, 'DAT', ?, 'available', ?, ?, ?)`
+    ).bind(crypto.randomUUID(), creator.id, input.title, input.medium, input.dimensions, input.price_cents, input.image_url, input.provenance_hash.replace(/^0x/i, '').toLowerCase(), input.creator, input.category).run();
     return c.json({ success: true, message: 'Artwork listed.', artwork: { artist_id: creator.id, title: input.title } }, 201);
   } catch (error) {
     console.error('Unable to save artwork:', error);
     return c.json({ success: false, error: 'Artwork could not be saved to D1.' }, 503);
   }
+});
+
+app.get('/api/chess/games', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare('SELECT id, fen, pgn_data, status, updated_at FROM chess_games ORDER BY updated_at DESC LIMIT 20').all();
+    return c.json({ games: results ?? [] });
+  } catch { return c.json({ error: 'Saved games unavailable.' }, 503); }
+});
+app.post('/api/chess/games', async (c) => {
+  if (!sameOriginWrite(c)) return c.json({ error: 'A same-origin request is required.' }, 403);
+  let pgn: string;
+  const game = new Chess();
+  try {
+    const parsed = z.object({ pgn: z.string().max(50000) }).strict().parse(await readJson(c));
+    pgn = parsed.pgn;
+    game.loadPgn(pgn);
+  } catch { return c.json({ error: 'Invalid chess game.' }, 400); }
+  try {
+    const id = crypto.randomUUID();
+    await c.env.DB.prepare('INSERT INTO chess_games (game_id, white_player, black_player, pgn_data, fen, status) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(id, 'Local white', 'Local black', pgn, game.fen(), game.isGameOver() ? 'completed' : 'active').run();
+    return c.json({ id, fen: game.fen() }, 201);
+  } catch { return c.json({ error: 'Game could not be saved.' }, 503); }
+});
+
+// Public D1 telemetry includes event records and training metrics.
+app.get('/api/telemetry', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare('SELECT id, event_id, league, matchup, oracle_consensus_json, metric_key, value, updated_at FROM sports_telemetry ORDER BY updated_at DESC LIMIT 100').all();
+    return c.json({ telemetry: results ?? [] });
+  } catch { return c.json({ error: 'Telemetry is unavailable. Apply the D1 migrations.' }, 503); }
+});
+
+// This logs purchase intent. Only verified payment can confirm revenue or unlock an asset.
+app.post('/api/sovereign/checkout', async (c) => {
+  if (!sameOriginWrite(c)) return c.json({ error: 'A same-origin request is required.' }, 403);
+  const schema = z.object({ item_id: z.string().trim().min(1).max(100), buyer_email: z.string().email().max(254) }).strict();
+  let input;
+  try { input = schema.safeParse(await readJson(c)); } catch { return c.json({ error: 'Invalid JSON body.' }, 400); }
+  if (!input.success) return c.json({ error: 'An item ID and buyer email are required.' }, 400);
+  try {
+    const reference = `intent:${crypto.randomUUID()}`;
+    const result = await c.env.DB.prepare(`INSERT INTO transactions (artwork_id, item_id, buyer_email, tx_reference, amount, currency, status, created_at)
+      SELECT id, id, ?, ?, price_cents, currency, 'pending', ? FROM artworks WHERE id = ? AND status = 'available'`)
+      .bind(input.data.buyer_email, reference, Date.now(), input.data.item_id).run();
+    if (result.meta.changes !== 1) return c.json({ error: 'Artwork is unavailable.' }, 409);
+    return c.json({ transaction: { id: result.meta.last_row_id, reference, status: 'pending' }, message: 'Checkout request recorded. Payment has not been collected.' }, 201);
+  } catch { return c.json({ error: 'Checkout is unavailable.' }, 503); }
 });
 
 // Token-protected collector asset delivery.
@@ -206,11 +257,11 @@ app.post('/api/checkout/verify-usdc', async (c) => {
          WHERE id = ? AND status = 'available'`
       ).bind(resolvedEmail, accessToken, artworkId),
       c.env.DB.prepare(
-        `INSERT INTO transactions (artwork_id, buyer_email, tx_reference, created_at)
-         SELECT ?, ?, ?, ? WHERE EXISTS (
+        `INSERT INTO transactions (artwork_id, item_id, buyer_email, tx_reference, created_at, amount, currency, status)
+         SELECT ?, ?, ?, ?, ?, (SELECT price_cents FROM artworks WHERE id = ?), 'USDC', 'confirmed' WHERE EXISTS (
            SELECT 1 FROM artworks WHERE id = ? AND status = 'sold' AND access_token = ?
          ) AND NOT EXISTS (SELECT 1 FROM transactions WHERE tx_reference = ?)`
-      ).bind(artworkId, resolvedEmail, txReference, Date.now(), artworkId, accessToken, txReference),
+      ).bind(artworkId, artworkId, resolvedEmail, txReference, Date.now(), artworkId, artworkId, accessToken, txReference),
     ]);
     if (results[0].meta.changes !== 1 || results[1].meta.changes !== 1) {
       return c.json({ error: 'Artwork was acquired simultaneously or this transaction was already redeemed' }, 409);
@@ -313,8 +364,8 @@ app.get('/api/admin/ledger', async (c) => {
   if (c.get('jwtPayload')?.role !== 'admin') return c.json({ error: 'Forbidden' }, 403);
   try {
     const { results } = await c.env.DB.prepare(
-      `SELECT t.id, t.artwork_id, a.title, a.price_cents, t.buyer_email, t.tx_reference, t.created_at
-       FROM transactions t JOIN artworks a ON t.artwork_id = a.id ORDER BY t.created_at DESC LIMIT 50`
+      `SELECT t.id, t.artwork_id, t.item_id, t.actor_id, a.title, a.price_cents, t.amount, t.currency, t.status, t.buyer_email, t.tx_reference, t.created_at
+       FROM transactions t LEFT JOIN artworks a ON t.artwork_id = a.id ORDER BY t.created_at DESC LIMIT 50`
     ).all();
     return c.json({ transactions: results ?? [] });
   } catch (error) {

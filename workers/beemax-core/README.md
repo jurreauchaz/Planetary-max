@@ -1,6 +1,16 @@
 # BEEMAX Core Worker deployment notes
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:3541050ad92dd5f305db78d74abeec0e0bc3fc986acb5876b9333f88be0a59f2 -->
+
 This folder is a separate Worker from the repository's root `planetary-max` Worker. Deploying it does not automatically change the root Worker or its QAL middleware.
+
+## D1 schema
+
+The canonical database definition is the repository root `schema.sql`. This Worker's D1 binding uses the shared `../../migrations` directory, with its existing database selection unchanged. From the repository root, apply local upgrades with `npx wrangler d1 migrations apply beemax-production-db --config workers/beemax-core/wrangler.toml --local`; use `--remote` for the configured remote database. Durable Object storage migrations remain in this Worker's configuration. See the root README for empty-database bootstrap and `npm run db:check` for schema parity verification.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ## Configure secrets and origin
 

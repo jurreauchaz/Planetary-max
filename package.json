@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "db:migrate": "wrangler d1 migrations apply max-ecosystem-db --remote",
+    "db:check": "python3 scripts/schema.py && python3 scripts/check-native-upgrade.py",
+    "db:migrate:local": "wrangler d1 migrations apply planetary_max_root_db --local",
+    "db:migrate": "wrangler d1 migrations apply planetary_max_root_db --remote",
     "deploy": "npm run build && wrangler deploy",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:native": "node scripts/native-settlement-smoke.mjs",
+    "test:sovereign": "node scripts/sovereign-smoke.mjs"
   },
   "dependencies": {
     "hono": "^4.10.0",

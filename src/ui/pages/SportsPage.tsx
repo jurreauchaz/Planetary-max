@@ -20,10 +20,10 @@ export default function SportsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/v1/dat/sports/list');
+      const response = await fetch('/api/telemetry');
       const data = await response.json() as { success?: boolean; telemetry?: TelemetryItem[]; error?: string };
-      if (!response.ok || !data.success) throw new Error(data.error || 'Unable to load sports telemetry.');
-      setTelemetry(Array.isArray(data.telemetry) ? data.telemetry : []);
+      if (!response.ok) throw new Error(data.error || 'Unable to load sports telemetry.');
+      setTelemetry(Array.isArray(data.telemetry) ? data.telemetry.map(item => ({...item, oracle_consensus: JSON.parse((item as unknown as {oracle_consensus_json:string}).oracle_consensus_json)})) : []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to load sports telemetry.');
     } finally {

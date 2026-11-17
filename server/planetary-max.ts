@@ -95,7 +95,7 @@ app.get('/api/artworks', async (c) => {
     return c.json({ success: true, artworks: results ?? [] });
   } catch (error) {
     console.error('Unable to read artwork catalog:', error);
-    return c.json({ error: 'Artwork catalog is unavailable. Apply the D1 migrations.' }, 503);
+    return c.json({ success: false, artworks: [], error: 'Artwork catalog is unavailable. Apply the D1 migrations.' }, 503);
   }
 });
 
@@ -172,7 +172,7 @@ app.get('/api/telemetry', async (c) => {
   try {
     const { results } = await c.env.DB.prepare('SELECT id, event_id, league, matchup, oracle_consensus_json, metric_key, value, updated_at FROM sports_telemetry ORDER BY updated_at DESC LIMIT 100').all();
     return c.json({ success: true, telemetry: results ?? [] });
-  } catch { return c.json({ error: 'Telemetry is unavailable. Apply the D1 migrations.' }, 503); }
+  } catch { return c.json({ success: false, telemetry: [], error: 'Telemetry is unavailable. Apply the D1 migrations.' }, 503); }
 });
 
 // This logs purchase intent. Only verified payment can confirm revenue or unlock an asset.

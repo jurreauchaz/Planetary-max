@@ -5,23 +5,48 @@ import SovereignCommandTerminal from './SovereignCommandTerminal';
 import './admin.css';
 
 const nav = [
-  {icon:'◫', label:'Overview', href:'#overview'}, {icon:'⌘', label:'ICV Mesh', href:'#mesh'},
-  {icon:'⬡', label:'BEE-MAX Registry', href:'#registry'}, {icon:'⌁', label:'Command Terminal', href:'#terminal'},
+  {icon:'◫', label:'Overview', href:'#/admin/overview'}, {icon:'⌘', label:'ICV Mesh', href:'#/admin/mesh'},
+  {icon:'⬡', label:'BEE-MAX Registry', href:'#/admin/registry'}, {icon:'⌁', label:'Command Terminal', href:'#/admin/terminal'},
 ];
 export default function PortalOS1Console() {
   const [active,setActive]=useState('Overview'); const [time,setTime]=useState(new Date()); const [fullscreen,setFullscreen]=useState(false);
   useEffect(()=>{const previousTitle=document.title; document.title='PORTAL-OS1 — Command Center'; return ()=>{document.title=previousTitle;};},[]);
   useEffect(()=>{const timer=window.setInterval(()=>setTime(new Date()),1000); const update=()=>setFullscreen(Boolean(document.fullscreenElement)); document.addEventListener('fullscreenchange',update); return ()=>{window.clearInterval(timer);document.removeEventListener('fullscreenchange',update);};},[]);
+  useEffect(() => {
+    const navigate = () => {
+      const item = nav.find(item => item.href === window.location.hash) || nav[0];
+      setActive(item.label);
+      document.getElementById(item.href.split('/').pop()!)?.scrollIntoView();
+    };
+    navigate();
+    window.addEventListener('hashchange', navigate);
+    return () => window.removeEventListener('hashchange', navigate);
+  }, []);
+  const [backend, setBackend] = useState('Connecting…');
+  useEffect(() => {
+    const controller = new AbortController();
+    const refresh = async () => {
+      try {
+        const response = await fetch('/api/status', { signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok || data.system !== 'Portal-OS1') throw new Error('Unavailable');
+        setBackend(data.environment || 'Connected');
+      } catch { if (!controller.signal.aborted) setBackend('Unavailable'); }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30000);
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, []);
   const toggleFullscreen=()=>{ if(document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen?.(); };
   return <div className="console-shell" id="overview">
-    <aside className="console-sidebar"><a href="#overview" className="console-brand" onClick={()=>setActive('Overview')}><span className="brand-glyph">✳</span><span>PORTAL<span className="brand-accent">OS</span><small>THE SOVEREIGN NETWORK</small></span></a>
-      <div className="sidebar-section">WORKSPACE <span>01</span></div><nav aria-label="Console navigation" className="console-nav">{nav.map(item=><a key={item.label} href={item.href} onClick={()=>setActive(item.label)} className={active===item.label?'active':''}><span className="nav-icon">{item.icon}</span>{item.label}{active===item.label&&<span className="active-marker">›</span>}</a>)}</nav>
+    <aside className="console-sidebar"><a href="#/admin/overview" className="console-brand" onClick={()=>{setActive('Overview');document.getElementById('overview')?.scrollIntoView();}}><span className="brand-glyph">✳</span><span>PORTAL<span className="brand-accent">OS</span><small>THE SOVEREIGN NETWORK</small></span></a>
+      <div className="sidebar-section">WORKSPACE <span>01</span></div><nav aria-label="Console navigation" className="console-nav">{nav.map(item=><a key={item.label} href={item.href} onClick={()=>{setActive(item.label);document.getElementById(item.href.split('/').pop()!)?.scrollIntoView({behavior:'smooth'});}} className={active===item.label?'active':''}><span className="nav-icon">{item.icon}</span>{item.label}{active===item.label&&<span className="active-marker">›</span>}</a>)}</nav>
       <div className="sidebar-section system-label">SYSTEM</div><a className="sidebar-link" href="/"><span className="nav-icon">↗</span> Return to spaces</a>
       <div className="sidebar-bottom"><div className="side-orb">✳</div><div><strong>PORTAL-OS1</strong><small>Spatial command center</small></div><span>⋮</span></div>
     </aside>
-    <main className="console-main"><header className="console-topbar"><div className="breadcrumb"><a className="mobile-back" href="/">← SPACES</a><span>WORKSPACE</span><b>/</b><strong>OVERVIEW</strong></div><div className="top-actions"><span className="top-clock">◷ &nbsp; {time.toLocaleTimeString('en-GB',{timeZone:'UTC'})} UTC</span><span className="top-separator"/><span className="environment"><i className="status-dot amber"/> PREVIEW MODE</span><button type="button" onClick={toggleFullscreen} className="fullscreen-button" aria-label={fullscreen?'Exit fullscreen':'Enter fullscreen'} title={fullscreen?'Exit fullscreen':'Enter fullscreen'}>⛶</button><span className="avatar">M</span></div></header>
+    <main className="console-main"><header className="console-topbar"><div className="breadcrumb"><a className="mobile-back" href="/">← SPACES</a><span>WORKSPACE</span><b>/</b><strong>{active.toUpperCase()}</strong></div><div className="top-actions"><span className="top-clock">◷ &nbsp; {time.toLocaleTimeString('en-GB',{timeZone:'UTC'})} UTC</span><span className="top-separator"/><span className="environment"><i className="status-dot amber"/> {backend}</span><button type="button" onClick={toggleFullscreen} className="fullscreen-button" aria-label={fullscreen?'Exit fullscreen':'Enter fullscreen'} title={fullscreen?'Exit fullscreen':'Enter fullscreen'}>⛶</button><span className="avatar">M</span></div></header>
       <div className="console-content"><div className="page-heading"><div><div className="eyebrow"><span className="tiny-spark">✳</span> THE SOVEREIGN NETWORK <span className="eyebrow-line"/> COMMAND CENTER</div><h1>Welcome to the <em>nexus.</em></h1><p>Your spatial command center for the MAX ecosystem.</p></div><div className="heading-meta"><span>YOUR UNIVERSE, AT A GLANCE</span><strong>PORTAL-OS <i>✳</i> 01</strong></div></div>
-        <div className="overview-strip"><div className="overview-title"><span className="overview-symbol">✧</span><div><small>NETWORK OVERVIEW</small><strong>One network. Infinite possibilities.</strong></div></div><div className="overview-divider"/><div className="overview-metric"><small>ICV MESH</small><strong><i className="status-dot violet"/> Sample topology</strong></div><div className="overview-metric"><small>REGISTRY</small><strong><i className="status-dot amber"/> Not connected</strong></div><div className="overview-metric"><small>ENVIRONMENT</small><strong>Preview <span>↗</span></strong></div></div>
+        <div className="overview-strip"><div className="overview-title"><span className="overview-symbol">✧</span><div><small>NETWORK OVERVIEW</small><strong>One network. Infinite possibilities.</strong></div></div><div className="overview-divider"/><div className="overview-metric"><small>ICV MESH</small><strong><i className="status-dot violet"/> Sample topology</strong></div><div className="overview-metric"><small>REGISTRY</small><strong><i className="status-dot amber"/> Not connected</strong></div><div className="overview-metric"><small>ENVIRONMENT</small><strong>{backend} <span>↗</span></strong></div></div>
         <div className="section-heading"><div><span className="section-index">01 / CONTROL SURFACE</span><h2>Your network, in focus<span>.</span></h2></div><p>Explore the systems that bring your universe together.</p></div>
         <div className="dashboard-grid"><section className="panel mesh-panel" id="mesh"><div className="panel-header"><div className="panel-title"><span className="panel-icon violet-icon">⌘</span><div><h3>ICV Mesh Visualizer</h3><p>MAX-MIND intelligence network</p></div></div><span className="panel-badge"><i className="status-dot violet"/> SAMPLE MESH</span></div><Ic_MeshVisualizer /></section>
           <section className="panel registry-panel" id="registry"><div className="panel-header"><div className="panel-title"><span className="panel-icon gold-icon">⬡</span><div><h3>BEE-MAX Control Deck</h3><p>Registry &amp; telemetry monitor</p></div></div><span className="panel-menu">···</span></div><BeeMaxControlDeck /></section>

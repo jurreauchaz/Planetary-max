@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 export interface PortalImmersiveArtwork {
@@ -15,6 +15,7 @@ interface EngineProps {
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80';
 
 export const PortalImmersiveEngine: React.FC<EngineProps> = ({ mode, artworks = [] }) => {
+  const [unavailable, setUnavailable] = useState(false);
   const mountRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,10 +36,12 @@ export const PortalImmersiveEngine: React.FC<EngineProps> = ({ mode, artworks = 
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     } catch (error) {
       console.error('Unable to initialize the Portal immersive engine:', error);
+      setUnavailable(true);
       mount.dataset.webglUnavailable = 'true';
       return () => { delete mount.dataset.webglUnavailable; };
     }
 
+    setUnavailable(false);
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.domElement.setAttribute('role', 'img');
@@ -246,8 +249,9 @@ export const PortalImmersiveEngine: React.FC<EngineProps> = ({ mode, artworks = 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 420, overflow: 'hidden', border: '1px solid rgba(168,85,247,.4)', borderRadius: 12, background: '#020617' }}>
       <div style={{ position: 'absolute', zIndex: 1, top: 12, left: 12, padding: '5px 10px', border: '1px solid rgba(34,211,238,.3)', borderRadius: 5, background: 'rgba(15,23,42,.9)', color: '#22d3ee', font: '10px ui-monospace,monospace', pointerEvents: 'none' }}>
-        WebGL 3D Engine // Mode: {mode.toUpperCase()}
+        {mode === 'art-gallery' ? 'Immersive art gallery' : '3D chess arena'}
       </div>
+      {unavailable && <p role="status" style={{ position: 'relative', zIndex: 1, padding: '60px 24px', color: '#e2e8f0' }}>3D viewing is unavailable in this browser.{mode === 'art-gallery' ? ' Explore the catalog below.' : ' Please use a browser with WebGL support.'}</p>}
       <div ref={mountRef} style={{ position: 'absolute', inset: 0, cursor: mode === 'chess-arena' ? 'pointer' : 'grab' }} />
     </div>
   );

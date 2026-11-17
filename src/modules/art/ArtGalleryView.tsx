@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useMemo, useState } from 'react';
 import { useArtworks } from '../../hooks/useArtworks';
+
+const ImmersiveGallery = lazy(() => import('../../components/PortalImmersiveEngine').then(module => ({ default: module.PortalImmersiveEngine })));
 
 export default function ArtGalleryView() {
   const { artworks, loading, error } = useArtworks();
+  const [immersive, setImmersive] = useState(false);
+  const galleryArtworks = useMemo(() => artworks.map(art => ({ id: art.id, title: art.title, imageUrl: art.image_url })), [artworks]);
   const [email, setEmail] = useState('');
   const [pending, setPending] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -21,6 +25,8 @@ export default function ArtGalleryView() {
   }
   return <section className="module-view">
     <div className="module-heading"><div><span className="eyebrow">01 / MAX-ART</span><h1>Sovereign <em>collection.</em></h1><p>Artwork inventory from the sovereign catalog.</p></div></div>
+    <button type="button" aria-pressed={immersive} onClick={() => setImmersive(value => !value)}>{immersive ? 'Close immersive gallery' : 'Explore immersive gallery'}</button>
+    {immersive && !loading && !error && artworks.length > 0 && <Suspense fallback={<p role="status">Opening gallery…</p>}><ImmersiveGallery mode="art-gallery" artworks={galleryArtworks} /></Suspense>}
     <label>Collector email <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" /></label>
     {message && <p role="status">{message}</p>}
     {loading ? <p role="status">Loading collection…</p> : error ? <p role="alert">{error}</p> : !artworks.length ? <p>No artworks available.</p> :

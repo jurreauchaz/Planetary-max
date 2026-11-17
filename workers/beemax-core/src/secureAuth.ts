@@ -93,12 +93,13 @@ export async function verifyRealUserSession(request: Request, env: AuthEnv): Pro
 
     const now = Math.floor(Date.now() / 1000);
     if (
+      typeof jwtPayload.iat !== 'number' || typeof jwtPayload.exp !== 'number' ||
       !Number.isSafeInteger(jwtPayload.iat) || !Number.isSafeInteger(jwtPayload.exp) ||
       jwtPayload.exp <= jwtPayload.iat || jwtPayload.exp - jwtPayload.iat > MAX_TOKEN_TTL_SECONDS ||
       jwtPayload.iat > now + CLOCK_SKEW_SECONDS || now >= jwtPayload.exp
     ) return { authorized: false };
     if (jwtPayload.nbf !== undefined && (
-      !Number.isSafeInteger(jwtPayload.nbf) ||
+      typeof jwtPayload.nbf !== 'number' || !Number.isSafeInteger(jwtPayload.nbf) ||
       jwtPayload.nbf > now + CLOCK_SKEW_SECONDS ||
       jwtPayload.nbf >= jwtPayload.exp
     )) return { authorized: false };

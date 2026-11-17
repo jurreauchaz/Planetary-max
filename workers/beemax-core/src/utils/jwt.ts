@@ -31,7 +31,7 @@ function bytesToBase64Url(bytes: Uint8Array): string {
 }
 
 /** Strictly decodes an unpadded base64url segment. */
-export function base64UrlToBytes(value: string): Uint8Array | null {
+export function base64UrlToBytes(value: string) {
   if (!value || !/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) return null;
   try {
     const base64 = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4);

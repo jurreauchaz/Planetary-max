@@ -1,9 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 
 type Line = { kind: 'command' | 'output' | 'error'; text: string };
 const initial: Line[] = [{kind:'output',text:'PORTAL-OS1 command interface initialized.'},{kind:'output',text:'Type “help” to explore available commands.'}];
 const routes: Record<string,string> = { status: '/api/status', 'd1 art list':'/api/artworks', 'd1 chess list':'/api/chess/games', 'd1 sports list':'/api/telemetry' };
-export default function SovereignCommandTerminal() {
+export default function SovereignCommandTerminal({ compact = false }: { compact?: boolean } = {}) {
+  const inputId = useId();
   const [lines,setLines]=useState<Line[]>(initial); const [input,setInput]=useState(''); const [busy,setBusy]=useState(false); const inputRef=useRef<HTMLInputElement>(null);
   const run = async (event:React.FormEvent) => {
     event.preventDefault(); const command=input.trim(); if(!command || busy) return; setInput('');
@@ -16,5 +17,5 @@ export default function SovereignCommandTerminal() {
     catch(error) { setLines(previous=>[...previous,{kind:'error',text:`Worker request failed: ${error instanceof Error ? error.message : 'Unknown error'}`}]); }
     finally {setBusy(false); inputRef.current?.focus();}
   };
-  return <div className="terminal-body"><div className="terminal-output" role="log" aria-live="polite">{lines.map((line,i)=><div className={`terminal-line ${line.kind}`} key={i}>{line.kind==='command'&&<span>portal@sovereign:~$ </span>}{line.text}</div>)}</div><form className="terminal-input" onSubmit={run}><label htmlFor="command-input">portal@sovereign:~$</label><input id="command-input" ref={inputRef} value={input} onChange={event=>setInput(event.target.value)} placeholder={busy?'Running command…':'Enter a command or question...'} maxLength={2000} disabled={busy} autoComplete="off" spellCheck={false}/><button type="submit" disabled={busy}>RUN ↗</button></form><div className="terminal-hint"><span>TRY: <button onClick={()=>setInput('help')}>help</button> <button onClick={()=>setInput('status')}>status</button> <button onClick={()=>setInput('show catalog')}>show catalog</button></span><span>QUESTIONS LOGGED</span></div></div>;
+  return <div className={`terminal-body${compact ? ' terminal-compact' : ''}`}><div className="terminal-output" role="log" aria-live="polite">{lines.map((line,i)=><div className={`terminal-line ${line.kind}`} key={i}>{line.kind==='command'&&<span>portal@sovereign:~$ </span>}{line.text}</div>)}</div><form className="terminal-input" onSubmit={run}><label htmlFor={inputId}>portal@sovereign:~$</label><input id={inputId} ref={inputRef} value={input} onChange={event=>setInput(event.target.value)} placeholder={busy?'Running command…':'Enter a command or question...'} maxLength={2000} disabled={busy} autoComplete="off" spellCheck={false}/><button type="submit" disabled={busy}>RUN ↗</button></form><div className="terminal-hint"><span>TRY: <button onClick={()=>setInput('help')}>help</button> <button onClick={()=>setInput('status')}>status</button> <button onClick={()=>setInput('show catalog')}>show catalog</button></span><span>QUESTIONS LOGGED</span></div></div>;
 }

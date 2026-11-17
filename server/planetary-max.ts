@@ -1,4 +1,4 @@
-import { Chess } from '../src/modules/chess/vendor/chess.js';
+import { Chess, DEFAULT_POSITION } from '../src/modules/chess/vendor/chess.js';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { sign, jwt } from 'hono/jwt';
@@ -73,6 +73,13 @@ async function verifyPassword(input: string, expected: string): Promise<boolean>
   return mismatch === 0;
 }
 
+app.get('/api/status', (c) => c.json({
+  status: 'nominal', system: 'Portal-OS1', sovereignEngine: 'MAX-SOVEREIGN',
+  environment: c.env.ENVIRONMENT || 'production',
+  protocol: c.env.PROTOCOL_VERSION || 'DAT-JURREAUISM-v1',
+  timestamp: new Date().toISOString(),
+}));
+
 // Public gallery catalog. Never expose fulfillment locations, purchase tokens, or collector information.
 app.get('/api/artworks', async (c) => {
   try {
@@ -85,7 +92,7 @@ app.get('/api/artworks', async (c) => {
        LEFT JOIN artist_profiles ap ON ap.user_id = a.artist_id
        ORDER BY a.created_at DESC LIMIT 100`
     ).all();
-    return c.json({ artworks: results ?? [] });
+    return c.json({ success: true, artworks: results ?? [] });
   } catch (error) {
     console.error('Unable to read artwork catalog:', error);
     return c.json({ error: 'Artwork catalog is unavailable. Apply the D1 migrations.' }, 503);
@@ -115,6 +122,28 @@ app.post('/api/artworks', async (c) => {
   }
 });
 
+// FEN snapshots are separate records; this endpoint does not verify move history.
+app.get('/api/chess/game', async (c) => {
+  try {
+    const game = await c.env.DB.prepare('SELECT id, fen, status, updated_at FROM chess_games ORDER BY updated_at DESC, rowid DESC LIMIT 1').first();
+    return c.json({ success: true, game: game || { fen: DEFAULT_POSITION } });
+  } catch { return c.json({ success: false, error: 'Saved game unavailable.' }, 503); }
+});
+app.post('/api/chess/move', async (c) => {
+  if (!sameOriginWrite(c)) return c.json({ success: false, error: 'A same-origin request is required.' }, 403);
+  let game: Chess;
+  try {
+    const { fen } = z.object({ fen: z.string().min(1).max(200) }).strict().parse(await readJson(c));
+    game = new Chess(fen);
+  } catch { return c.json({ success: false, error: 'Invalid chess position.' }, 400); }
+  try {
+    const fen = game.fen();
+    await c.env.DB.prepare('INSERT INTO chess_games (game_id, white_player, black_player, fen, status) VALUES (?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), 'Local white', 'Local black', fen, game.isGameOver() ? 'completed' : 'active').run();
+    return c.json({ success: true, fen });
+  } catch { return c.json({ success: false, error: 'Game could not be saved.' }, 503); }
+});
+
 app.get('/api/chess/games', async (c) => {
   try {
     const { results } = await c.env.DB.prepare('SELECT id, fen, pgn_data, status, updated_at FROM chess_games ORDER BY updated_at DESC LIMIT 20').all();
@@ -142,7 +171,7 @@ app.post('/api/chess/games', async (c) => {
 app.get('/api/telemetry', async (c) => {
   try {
     const { results } = await c.env.DB.prepare('SELECT id, event_id, league, matchup, oracle_consensus_json, metric_key, value, updated_at FROM sports_telemetry ORDER BY updated_at DESC LIMIT 100').all();
-    return c.json({ telemetry: results ?? [] });
+    return c.json({ success: true, telemetry: results ?? [] });
   } catch { return c.json({ error: 'Telemetry is unavailable. Apply the D1 migrations.' }, 503); }
 });
 

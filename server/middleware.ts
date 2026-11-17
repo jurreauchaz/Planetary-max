@@ -93,7 +93,7 @@ export async function verifyNodeSignature(c: Context<{ Bindings: Bindings }>, ne
     await db.prepare('DELETE FROM node_signature_nonces WHERE expires_at <= ?').bind(now).run();
     const nonceResult = await db.prepare(
       'INSERT OR IGNORE INTO node_signature_nonces (node_id, nonce, expires_at) VALUES (?, ?, ?)',
-    ).bind(nodeId, nonce, now + MAX_CLOCK_SKEW_MS).run();
+    ).bind(nodeId, nonce, Math.max(now, timestamp) + MAX_CLOCK_SKEW_MS).run();
     if (nonceResult.meta.changes !== 1) {
       return c.json({ success: false, error: 'Conflict: signed request nonce has already been used.' }, 409);
     }

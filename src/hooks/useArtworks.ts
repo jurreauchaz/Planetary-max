@@ -10,6 +10,7 @@ export interface Artwork {
   medium: string;
   dimensions: string | null;
   price_cents: number;
+  currency: string;
   image_url: string;
   status: 'available' | 'reserved' | 'sold';
 }

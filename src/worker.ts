@@ -1,4 +1,4 @@
-import app, { BEEMAXSecureNodeRegistryDO, NodeRegistryDO } from '../server/planetary-max';
+import app, { BEEMAXSecureNodeRegistryDO, NodeRegistryDO } from '../index';
 
 // Keep Durable Object classes exported from the deployed Worker entry point.
 export { BEEMAXSecureNodeRegistryDO, NodeRegistryDO };

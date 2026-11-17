@@ -1,10 +1,11 @@
 import type { Context, Next } from 'hono';
+import { verifyTypedData, type TypedDataDomain, type TypedDataField } from 'ethers';
 import type { Bindings } from './types';
 
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const MAX_SIGNED_BODY_BYTES = 60_000;
 
-function decodeBase64Url(value: string): Uint8Array | null {
+function decodeBase64Url(value: string) {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
   try {
     const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
@@ -12,6 +13,27 @@ function decodeBase64Url(value: string): Uint8Array | null {
     return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
   } catch {
     return null;
+  }
+}
+
+/** Requires a D1 binding before allowing a request to proceed. */
+export async function dbMiddleware(c: Context<{ Bindings: Bindings }>, next: Next) {
+  if (!c.env.DB) return c.json({ success: false, error: 'D1 database binding missing.' }, 500);
+  await next();
+}
+
+/** Checks the signer only; callers must validate the domain, payload and signer authorization. */
+export async function verifySovereignSignature(
+  domain: TypedDataDomain,
+  types: Record<string, TypedDataField[]>,
+  value: Record<string, unknown>,
+  signature: string,
+  expectedAddress: string,
+): Promise<boolean> {
+  try {
+    return verifyTypedData(domain, types, value, signature).toLowerCase() === expectedAddress.toLowerCase();
+  } catch {
+    return false;
   }
 }
 

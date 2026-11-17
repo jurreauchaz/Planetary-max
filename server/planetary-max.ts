@@ -80,6 +80,51 @@ app.get('/api/status', (c) => c.json({
   timestamp: new Date().toISOString(),
 }));
 
+// A small intent router, not an AI model or an authorization to settle orders.
+app.post('/api/beemax/nlp', async (c) => {
+  if (!sameOriginWrite(c)) return c.json({ success: false, error: 'A same-origin request is required.' }, 403);
+  let input;
+  try {
+    input = z.object({ query: z.string().trim().min(1).max(2000), context: z.string().max(2000).optional() }).strict().safeParse(await readJson(c));
+  } catch { return c.json({ success: false, error: 'Invalid JSON body.' }, 400); }
+  if (!input.success) return c.json({ success: false, error: 'A query of up to 2000 characters is required.' }, 400);
+
+  const query = input.data.query;
+  const lowerQuery = query.toLowerCase();
+  let actionType: string;
+  let reply: string;
+  try {
+    if (/status|diagnostic|sweep/.test(lowerQuery)) {
+      actionType = 'SYSTEM_DIAGNOSTIC';
+      const telemetry = await c.env.DB.prepare("SELECT COUNT(*) AS count FROM node_telemetry WHERE status = 'ACTIVE'").first<{ count: number }>();
+      if (!telemetry) throw new Error('Missing telemetry count');
+      reply = `Node telemetry reports ${telemetry.count} active nodes.`;
+    } else if (/order|provenance|catalog/.test(lowerQuery)) {
+      actionType = 'CATALOG_QUERY';
+      const artworks = await c.env.DB.prepare('SELECT COUNT(*) AS count FROM artworks').first<{ count: number }>();
+      if (!artworks) throw new Error('Missing artwork count');
+      reply = `The catalog contains ${artworks.count} artworks.`;
+    } else if (/escrow|settlement/.test(lowerQuery)) {
+      actionType = 'ESCROW_QUERY';
+      reply = 'Escrow release is not connected to this command interface.';
+    } else {
+      actionType = 'INTENT_AS_CODE';
+      reply = 'Query received. Try asking about node status, the catalog, or escrow.';
+    }
+
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(query));
+    const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    await c.env.DB.prepare(
+      `INSERT INTO beemax_ledger_events (id, entity_type, entity_id, action, actor_id, payload_hash)
+       VALUES (?, 'nlp_command', ?, ?, NULL, ?)`
+    ).bind(`evt_nlp_${crypto.randomUUID()}`, actionType, actionType, hash).run();
+    return c.json({ success: true, reply, actionType, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('BEEMAX query failed:', error);
+    return c.json({ success: false, error: 'BEEMAX query is unavailable.' }, 503);
+  }
+});
+
 // Public gallery catalog. Never expose fulfillment locations, purchase tokens, or collector information.
 app.get('/api/artworks', async (c) => {
   try {

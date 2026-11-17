@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS marketplace_orders (
     buyer_id TEXT NOT NULL,
     amount_cents INTEGER NOT NULL,
     payment_status TEXT DEFAULT 'pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, edition_number INTEGER, edition_id TEXT REFERENCES artwork_editions(id) ON DELETE RESTRICT, currency TEXT NOT NULL DEFAULT 'DAT', escrow_expires_at TEXT, updated_at TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, edition_number INTEGER, edition_id TEXT REFERENCES artwork_editions(id) ON DELETE RESTRICT, currency TEXT NOT NULL DEFAULT 'DAT', escrow_expires_at TEXT, updated_at TEXT, escrow_release_id TEXT, escrow_released_at TEXT,
     FOREIGN KEY (artwork_id) REFERENCES artworks(id),
     FOREIGN KEY (buyer_id) REFERENCES users(id)
 );
@@ -442,6 +442,20 @@ CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_a
 
 CREATE INDEX IF NOT EXISTS idx_transactions_actor ON transactions(actor_id, created_at);
 
+CREATE TABLE IF NOT EXISTS marketplace_payment_receipts (
+  payment_id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL UNIQUE REFERENCES marketplace_orders(id),
+  amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+  currency TEXT NOT NULL,
+  settled_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_order_nonces (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  nonce TEXT NOT NULL,
+  PRIMARY KEY(user_id, nonce)
+);
+
 -- Sample records. Artist accounts have no usable login password. Revenue metrics are not confirmed earnings.
 
 INSERT OR IGNORE INTO "users" ("id", "username", "password_hash", "role", "status", "created_at", "email", "password_salt", "display_name", "public_key", "updated_at") VALUES ('artist_1', 'maxjurreau', '!seeded-artist-no-login!', 'user', 'active', (unixepoch() * 1000), NULL, NULL, NULL, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
@@ -531,3 +545,5 @@ INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0018_portal_sovereign_core.s
 INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0019_native_settlement.sql');
 
 INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0020_native_recipients.sql');
+
+INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0021_escrow_settlement.sql');

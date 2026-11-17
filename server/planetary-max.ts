@@ -277,7 +277,8 @@ app.post('/api/checkout/verify-usdc', async (c) => {
 
   try {
     const artwork = await c.env.DB.prepare(
-      `SELECT id, title, price_cents FROM artworks WHERE id = ? AND status = 'available' LIMIT 1`
+      `SELECT id, title, price_cents FROM artworks WHERE id = ? AND status = 'available'
+       AND NOT EXISTS (SELECT 1 FROM marketplace_orders o WHERE o.artwork_id = artworks.id AND o.payment_status NOT IN ('cancelled', 'failed')) LIMIT 1`
     ).bind(artworkId).first<{ id: string; title: string; price_cents: number }>();
     if (!artwork) return c.json({ error: 'Artwork not found or already sold' }, 404);
 
@@ -328,7 +329,8 @@ app.post('/api/checkout/verify-usdc', async (c) => {
     const results = await c.env.DB.batch([
       c.env.DB.prepare(
         `UPDATE artworks SET status = 'sold', buyer_email = ?, access_token = ?
-         WHERE id = ? AND status = 'available'`
+         WHERE id = ? AND status = 'available'
+         AND NOT EXISTS (SELECT 1 FROM marketplace_orders o WHERE o.artwork_id = artworks.id AND o.payment_status NOT IN ('cancelled', 'failed'))`
       ).bind(resolvedEmail, accessToken, artworkId),
       c.env.DB.prepare(
         `INSERT INTO transactions (artwork_id, item_id, buyer_email, tx_reference, created_at, amount, currency, status)

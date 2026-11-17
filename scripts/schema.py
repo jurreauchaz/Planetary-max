@@ -47,6 +47,7 @@ def snapshot(db, seeds):
         '-- Regenerate: python3 scripts/schema.py --write; verify: npm run db:check.',
         '-- Includes Wrangler migration receipts so future upgrades skip this baseline.',
         '-- Text IDs, roles, amounts in cents, payment fields and constraints match deployed APIs.',
+        '-- Consolidated artworks, chess_games, sports_telemetry and transactions preserve existing marketplace contracts.',
         'PRAGMA foreign_keys = ON;',
     ]
     for kind, _, sql in schema_objects(db):
@@ -101,6 +102,7 @@ def main():
     # Exercise SQL boundaries used by the gallery, chess and verified-payment handlers.
     boot.execute('SELECT u.username, a.fulfillment_uri, a.access_token, ap.bio FROM artworks a JOIN users u ON u.id=a.artist_id LEFT JOIN artist_profiles ap ON ap.user_id=u.id').fetchall()
     boot.execute("INSERT INTO chess_games(game_id, white_player, black_player, fen) VALUES ('schema-check', 'White', 'Black', 'test-fen')")
+    boot.execute('SELECT id, event_id, league, matchup, oracle_consensus_json, metric_key, value, updated_at FROM sports_telemetry').fetchall()
     boot.execute("INSERT INTO transactions(artwork_id, item_id, buyer_email, tx_reference, amount, currency, status, created_at) VALUES ('art_001', 'art_001', 'check@example.test', 'schema-check', 1800, 'DAT', 'pending', 0)")
     assert boot.execute("SELECT item_id, amount, status FROM transactions WHERE tx_reference='schema-check'").fetchone() == ('art_001', 1800, 'pending')
     boot.execute('SELECT identity_id, handle FROM sovereign_identities').fetchall()

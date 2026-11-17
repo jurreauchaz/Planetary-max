@@ -32,11 +32,25 @@ The sample `Sovereign Genesis #1` has no supplied price and is reserved to preve
 
 <!-- coderabbit-ai-generated-section:v1:0a6cd1f3056938aebb3184224f74869e4ec7371ef3ad087efbd55df6b4cf55e3 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:e896f3c52bd385d69329be998bed44d2db2ff27ecdbc67577d0ee0d4af4458fe -->
+
 Checkout amounts remain integer cents; confirmed payment records retain the existing verification requirements.
+
+The root API exposes `/api/status`, `/api/artworks`, `/api/telemetry`, and chess snapshots through `GET /api/chess/game` and `POST /api/chess/move`. Artwork creation retains the existing creator, medium, price and provenance requirements. Chess writes require a same-origin request and a valid FEN; a snapshot does not establish legal move history.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ## Native MAX-SOVEREIGN / MAX-FINANCE settlement
 
-`POST /api/sovereign/settle` records an authenticated native credit entry directly in D1. The canonical `index.ts` mounts the settlement router. No Stripe integration exists in this repository.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:5a43523b6414781177d3707581097edb1e072c00edb423920e04b2e58a1ddc6f -->
+
+`POST /api/sovereign/credit-settle` records an authenticated native credit entry directly in D1. The existing `/api/sovereign/settle` endpoint provides the same operation and shares its idempotency keys. The canonical `index.ts` mounts the settlement router. No Stripe integration exists in this repository.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Example JSON body:
 
@@ -44,7 +58,15 @@ Example JSON body:
 {"item_id":"MAX-FINANCE:activity-001","amount":100,"currency":"SOV_CREDIT","actor_id":"registered-node-id"}
 ```
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:d5ae884e9417700ba0563bbc494b9538d85fc5b8c0670bfc19866b64c2af59ff -->
+
 Amounts are positive, safe integer minor credit units. Currency defaults to `SOV_CREDIT`; other currencies are rejected. `actor_id` is optional and, when supplied, must match the authenticated node. Native entries may refer to activities from any workspace; they do not require an artwork foreign key.
+
+Recipient records may instead use `{"recipient_id":"recipient-1","amount":100,"memo":"art credit"}`. Recipient IDs are 1–100 characters and the optional memo is at most 500 characters. The response also includes `settlement_id`, `sender`, `recipient` and `memo`. Changing the recipient or memo while reusing an idempotency key returns 409. Migration `0020_native_recipients.sql` must be applied before using either request format.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Use the registered-node Ed25519 request signature described in `server/middleware.ts`: `X-Max-Node-Id`, `X-Max-Node-Signature`, `X-Max-Timestamp` and a fresh `X-Max-Nonce`. Include an `Idempotency-Key` containing 8–128 letters, digits, underscores or hyphens. Retrying the same payload with the same key and a new signed nonce returns the original transaction ID and timestamp. Reusing a key with different data returns 409. Revoked or unknown nodes cannot settle.
 

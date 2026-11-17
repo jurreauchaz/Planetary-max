@@ -10,6 +10,8 @@
 
 -- Text IDs, roles, amounts in cents, payment fields and constraints match deployed APIs.
 
+-- Consolidated artworks, chess_games, sports_telemetry and transactions preserve existing marketplace contracts.
+
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS node_telemetry (
@@ -423,7 +425,9 @@ CREATE TABLE IF NOT EXISTS "transactions" (
   currency TEXT NOT NULL DEFAULT 'USDC',
   status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('pending', 'confirmed', 'failed', 'SETTLED_NATIVE')),
   created_at INTEGER NOT NULL,
-  actor_id TEXT REFERENCES trusted_nodes(node_id) ON DELETE RESTRICT,
+  actor_id TEXT REFERENCES trusted_nodes(node_id) ON DELETE RESTRICT, recipient_id TEXT
+  CHECK (recipient_id IS NULL OR (status = 'SETTLED_NATIVE' AND length(trim(recipient_id)) BETWEEN 1 AND 100)), memo TEXT
+  CHECK (memo IS NULL OR (recipient_id IS NOT NULL AND length(memo) <= 500)),
   CHECK (
     (status = 'SETTLED_NATIVE' AND actor_id IS NOT NULL AND currency = 'SOV_CREDIT'
       AND typeof(amount) = 'integer' AND amount > 0 AND amount <= 9007199254740991)
@@ -525,3 +529,5 @@ INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0017_portal_verification_see
 INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0018_portal_sovereign_core.sql');
 
 INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0019_native_settlement.sql');
+
+INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0020_native_recipients.sql');

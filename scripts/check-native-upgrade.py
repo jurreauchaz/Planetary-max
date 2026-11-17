@@ -38,5 +38,12 @@ for args in [(0, 'SOV_CREDIT', 'native-test', 'zero'), (1.5, 'SOV_CREDIT', 'nati
     rejects(insert, args)
 db.execute(insert, (100, 'SOV_CREDIT', 'native-test', 'native-good'))
 rejects(insert, (100, 'SOV_CREDIT', 'native-test', 'native-good'))
+before_recipients = db.execute(f'SELECT {projection}, actor_id FROM transactions ORDER BY id').fetchall()
+db.executescript((root / 'migrations/0020_native_recipients.sql').read_text())
+assert db.execute(f'SELECT {projection}, actor_id FROM transactions ORDER BY id').fetchall() == before_recipients
+assert db.execute('SELECT count(*) FROM transactions WHERE recipient_id IS NOT NULL OR memo IS NOT NULL').fetchone()[0] == 0
+db.execute("UPDATE transactions SET recipient_id = 'recipient', memo = 'note' WHERE tx_reference = 'native-good'")
+rejects("UPDATE transactions SET recipient_id = 'recipient' WHERE tx_reference = 'verified'")
+rejects("UPDATE transactions SET memo = ? WHERE tx_reference = 'native-good'", ('x' * 501,))
 assert db.execute('PRAGMA foreign_key_check').fetchall() == []
-print('PASS: legacy rows/statuses, AUTOINCREMENT watermark, verified-payment inserts, native constraints and foreign keys preserved.')
+print('PASS: legacy rows/statuses, AUTOINCREMENT watermark, verified-payment inserts, native constraints, recipient upgrade and foreign keys preserved.')

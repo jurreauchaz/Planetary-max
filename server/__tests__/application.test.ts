@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 import { readFileSync, readdirSync } from 'node:fs';
 import { sign } from 'hono/jwt';
@@ -39,6 +40,26 @@ beforeEach(() => {
 afterEach(() => { sqlite.close(); vi.restoreAllMocks(); });
 
 describe('release application boundaries', () => {
+  it('logs in with the provisioned password and protects the administrator session', async () => {
+    const password = 'synthetic-preview-password-123456789';
+    const configured = { ...env(), ADMIN_PASSWORD_HASH: createHash('sha256').update(password).digest('hex') };
+    const login = (value: string) => app.request('https://max.test/api/admin/login', {
+      method: 'POST', headers: { Origin: 'https://max.test', 'Content-Type': 'application/json' }, body: JSON.stringify({ password: value }),
+    }, configured as never);
+    expect((await login('wrong-password')).status).toBe(401);
+    const response = await login(password);
+    expect(response.status).toBe(200);
+    const cookie = response.headers.get('set-cookie');
+    expect(cookie).toMatch(/HttpOnly/i);
+    expect(cookie).toMatch(/Secure/i);
+    expect(cookie).toMatch(/SameSite=Strict/i);
+    expect(await response.json()).toEqual({ success: true });
+    const session = await app.request('https://max.test/api/admin/session', { headers: { Cookie: cookie!.split(';')[0] } }, configured as never);
+    expect(session.status).toBe(200);
+    const logout = await app.request('https://max.test/api/admin/logout', { method: 'POST', headers: { Origin: 'https://max.test', Cookie: cookie!.split(';')[0] } }, configured as never);
+    expect(logout.status).toBe(200);
+    expect(logout.headers.get('set-cookie')).toMatch(/Max-Age=0/i);
+  });
   it('fails closed when login is rate limited', async () => {
     const res=await app.request('https://max.test/api/admin/login',{method:'POST',headers:{Origin:'https://max.test','Content-Type':'application/json'},body:JSON.stringify({password:'test'})},{...env(),ADMIN_LOGIN_LIMITER:{limit:async()=>({success:false})}} as never);
     expect(res.status).toBe(429);expect(res.headers.get('Retry-After')).toBe('60');

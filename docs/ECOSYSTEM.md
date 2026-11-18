@@ -14,7 +14,13 @@ This release extends the existing Portal. It preserves artwork inventory, legacy
 
 <!-- coderabbit-ai-generated-section:v1:654bc4276b9a3cea442dd233ff4d7205e48e309d7e52b582b94bfc2a81c69dbc -->
 
-- The command-center overview is public. Optional Operator sign-in opens protected publishing, customer data, node operations and model inference. Sign-in explains active secret precedence and verifies the session cookie; no default password is embedded.
+- The command-center overview is public. Optional Operator sign-in opens protected publishing, customer data, node operations and model inference. <!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:85285bc2482f8b4c5d82df244a24254247dbe5554d567a1c5ce737c285d80868 -->
+
+Operator authentication preserves existing secret precedence and verifies the session cookie; no default password is embedded. Public sign-in omits deployment and secret-configuration guidance.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 <!-- /coderabbit-ai-generated:v1 -->
 - Games/apps and media have featured trailer showrooms, screenshot filmstrips, release navigation and immersive image galleries. Optional previews use direct HTTPS video files and up to 12 screenshots. Browser playback depends on the host and supported media encoding. No sample catalog is published.

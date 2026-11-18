@@ -8,8 +8,8 @@ export function SportsTelemetryForm({ onSuccess }: SportsTelemetryFormProps) {
   const [league, setLeague] = useState<League>('NFL');
   const [matchup, setMatchup] = useState('');
   const [predictedWinner, setPredictedWinner] = useState('');
-  const [confidenceScore, setConfidenceScore] = useState('75');
-  const [dataSourcesCount, setDataSourcesCount] = useState('4');
+  const [confidenceScore, setConfidenceScore] = useState('');
+  const [dataSourcesCount, setDataSourcesCount] = useState('');
   const [status, setStatus] = useState<{ loading: boolean; error?: string; success?: string }>({ loading: false });
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

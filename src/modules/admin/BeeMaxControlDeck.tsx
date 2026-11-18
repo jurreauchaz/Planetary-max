@@ -1,17 +1,7 @@
 import React, { useState } from 'react';
-
-const nodes = [
-  { name: 'MAX-MIND Core', id: 'CORE-01', type: 'Intelligence', color: 'purple' },
-  { name: 'BEE-MAX Gateway', id: 'BEE-05', type: 'Registry', color: 'gold' },
-  { name: 'D1 Ledger', id: 'D1-06', type: 'Storage', color: 'blue' },
-];
-export default function BeeMaxControlDeck() {
-  const [filter, setFilter] = useState<'all' | 'core'>('all');
-  return <div className="deck-body">
-    <div className="deck-intro"><div className="deck-icon">⬡</div><div><strong>Secure registry</strong><p>Node identity &amp; connection overview</p></div><span className="demo-tag">SAMPLE</span></div>
-    <div className="deck-stats"><div><span>REGISTERED NODES</span><strong>06 <small>nodes</small></strong></div><div><span>CONNECTIONS</span><strong>09 <small>links</small></strong></div></div>
-    <div className="deck-list-heading"><span>NODE REGISTRY <small> / SAMPLE</small></span><div className="filter-buttons"><button className={filter==='all'?'selected':''} onClick={()=>setFilter('all')}>All</button><button className={filter==='core'?'selected':''} onClick={()=>setFilter('core')}>Core</button></div></div>
-    <div className="registry-list">{nodes.filter(node=>filter==='all'||node.id==='CORE-01').map(node=><div className="registry-row" key={node.id}><span className={`registry-icon ${node.color}`}>✦</span><div><strong>{node.name}</strong><small>{node.id} · {node.type}</small></div><span className="sample-state">Sample</span></div>)}</div>
-    <div className="deck-note"><span>◈</span><p>Registry access is protected.<br/><strong>Live telemetry is not connected.</strong></p></div>
-  </div>;
+import NodeEnrollment from './NodeEnrollment';
+export interface RegistryNode { node_id: string; status: string; created_at: number; updated_at: number; mesh_region: string | null; last_heartbeat: number | null }
+export default function BeeMaxControlDeck({ nodes, error, refresh }: { nodes: RegistryNode[]; error: string; refresh: () => void }) {
+  const [filter, setFilter] = useState('all');const [notice,setNotice]=useState('');const [revoking,setRevoking]=useState<string|null>(null);
+  return <div className="deck-body"><div className="deck-intro"><div className="deck-icon">⬡</div><div><strong>Node trust registry</strong><p>Registered identities &amp; reported heartbeats</p></div></div><div className="deck-stats"><div><span>REGISTERED NODES</span><strong>{nodes.length}</strong></div><div><span>ACTIVE TRUST</span><strong>{nodes.filter(n => n.status === 'ACTIVE').length}</strong></div></div><div className="deck-list-heading"><span>NODE REGISTRY</span><div className="filter-buttons"><button className={filter === 'all' ? 'selected' : ''} onClick={() => setFilter('all')}>All</button><button className={filter === 'ACTIVE' ? 'selected' : ''} onClick={() => setFilter('ACTIVE')}>Active</button><button onClick={refresh}>Refresh</button></div></div>{error ? <p role="alert">{error}</p> : !nodes.length ? <p>No nodes are enrolled.</p> : <div className="registry-list">{nodes.filter(n => filter === 'all' || n.status === filter).map(n => <div className="registry-row" key={n.node_id}><span className="registry-icon gold">✦</span><div><strong>{n.node_id}</strong><small>{n.mesh_region || 'Region not reported'} · {n.last_heartbeat ? `Heartbeat ${new Date(n.last_heartbeat).toISOString()}` : 'No heartbeat reported'}</small></div><span className="sample-state">{n.status}</span>{n.status==='ACTIVE'&&<button disabled={revoking===n.node_id} onClick={async()=>{setRevoking(n.node_id);try{const res=await fetch(`/api/admin/nodes/${encodeURIComponent(n.node_id)}/revoke`,{method:'POST'});if(!res.ok)throw new Error('Revocation failed.');setNotice('Node trust revoked.');refresh();}catch(e){setNotice(e instanceof Error?e.message:'Revocation failed.');}finally{setRevoking(null);}}}>Revoke</button>}</div>)}</div>}<p role="status">{notice}</p><NodeEnrollment refresh={refresh}/><p className="quiet">Trust status records authorization. Heartbeat timestamps show the last reported activity.</p></div>;
 }

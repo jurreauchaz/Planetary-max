@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 
 export interface Artwork {
   id: string;
@@ -11,6 +11,7 @@ export interface Artwork {
   dimensions: string | null;
   price_cents: number;
   image_url: string;
+  provenance_hash?: string | null;
   status: 'available' | 'reserved' | 'sold';
 }
 
@@ -24,7 +25,10 @@ export function useArtworks() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [revision, setRevision] = useState(0);
+  const reload = useCallback(() => setRevision(n => n + 1), []);
   useEffect(() => {
+    setLoading(true); setError(null);
     const controller = new AbortController();
 
     async function loadArtworks() {
@@ -44,7 +48,7 @@ export function useArtworks() {
 
     void loadArtworks();
     return () => controller.abort();
-  }, []);
+  }, [revision]);
 
-  return { artworks, loading, error };
+  return { artworks, loading, error, reload };
 }

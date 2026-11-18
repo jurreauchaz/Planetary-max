@@ -3,13 +3,30 @@
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "WebWorker"],
-    "types": ["@cloudflare/workers-types"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "@cloudflare/workers-types",
+      "vite/client"
+    ],
+    "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowJs": true
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "server/**/*.ts"
+  ],
+  "exclude": [
+    "**/vendor/*.js",
+    "**/__tests__/**"
+  ]
 }

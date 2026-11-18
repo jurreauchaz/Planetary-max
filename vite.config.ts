@@ -16,9 +16,9 @@ export default defineConfig({
         target: 'http://localhost:8787',
         changeOrigin: true,
       },
-      // Portal-OS runs separately so its D1 binding stays isolated.
+      // The main application uses the root Worker domain-record APIs.
       '/v1': {
-        target: 'http://localhost:8788',
+        target: 'http://localhost:8787',
         changeOrigin: true,
       },
     },

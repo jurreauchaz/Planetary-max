@@ -54,3 +54,12 @@ new_sqlite_classes = ["BEEMAXSecureNodeRegistryDO"]
 [[migrations]]
 tag = "v3-admin-sessions"
 new_sqlite_classes = ["AdminSessionDO"]
+
+# BEEMAX uses your Cloudflare account; no model API key is sent to browsers.
+[ai]
+binding = "AI"
+
+[[ratelimits]]
+name = "BEEMAX_LIMITER"
+namespace_id = "1002"
+simple = { limit = 10, period = 60 }

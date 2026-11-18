@@ -1,0 +1,22 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { DigitalProduct } from '../catalog/types';
+export default function DigitalPublishing() {
+  const [items, setItems] = useState<DigitalProduct[]>([]); const [editing, setEditing] = useState<DigitalProduct | null>(null);
+  const [notice, setNotice] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const reload = useCallback(async () => {
+    try { const r = await fetch('/api/admin/catalog'); const d = await r.json() as { products: DigitalProduct[]; error?: string }; if (!r.ok) throw new Error(d.error); setItems(d.products); setError(''); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Catalog unavailable.'); }
+  }, []);
+  useEffect(() => { void reload(); }, [reload]);
+  return <div className="digital-publishing"><p>Publish games, apps, and media with their official release or purchase URL. Prices describe the release; the linked store handles paid delivery.</p><form ref={formRef} key={editing?.id || 'new'} onSubmit={async e => {
+    e.preventDefault(); const form = e.currentTarget; const fields = Object.fromEntries(new FormData(form)); const cents = Math.round(Number(fields.price) * 100);
+    const { price: _price, ...rest } = fields; setBusy(true); setError(''); setNotice('');
+    try { const r = await fetch(`/api/admin/catalog${editing ? `/${editing.id}` : ''}`, { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...rest, price_cents: cents }) }); const result = await r.json() as { error?: string }; if (!r.ok) throw new Error(result.error); setNotice(editing ? 'Release updated.' : 'Release saved.'); setEditing(null); form.reset(); await reload(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Release could not be saved.'); } finally { setBusy(false); }
+  }}><div className="release-fields"><label>Release type<select name="kind" defaultValue={editing?.kind || 'game'}><option value="game">Game</option><option value="app">App</option><option value="media">Media</option></select></label><label>Visibility<select name="status" defaultValue={editing?.status || 'draft'}><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label></div>
+    <label>Release title<input name="title" defaultValue={editing?.title} maxLength={160} required/></label><label>Creator / publisher<input name="creator" defaultValue={editing?.creator} maxLength={160} required/></label><label>Description<textarea name="description" defaultValue={editing?.description} maxLength={6000} required/></label><label>Cover image URL (HTTPS)<input name="image_url" type="url" pattern="https://.*" defaultValue={editing?.image_url} required/></label><label>Official release or purchase URL (HTTPS)<input name="destination_url" type="url" pattern="https://.*" defaultValue={editing?.destination_url} required/></label>
+    <div className="release-fields"><label>Price (0 for free)<input name="price" type="number" min="0" max="1000000" step="0.01" defaultValue={editing ? editing.price_cents / 100 : 0} required/></label><label>Currency<select name="currency" defaultValue={editing?.currency || 'DAT'}><option>DAT</option><option>USD</option><option>USDC</option></select></label><label>Platform / format<input name="platform" defaultValue={editing?.platform || 'Web'} maxLength={100} required/></label><label>Version / edition<input name="version" defaultValue={editing?.version || '1.0'} maxLength={80} required/></label></div>
+    <button disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Save release'}</button>{editing && <button type="button" disabled={busy} onClick={() => { setEditing(null); setNotice(''); }}>Cancel editing</button>}
+  </form>{notice && <p role="status">{notice}</p>}{error && <p role="alert">{error}</p>}<h4>Manage releases</h4><button type="button" onClick={() => void reload()}>Refresh releases</button>{!items.length && <p>No digital releases yet.</p>}<ul className="release-list">{items.map(p => <li key={p.id}><span><strong>{p.title}</strong><small>{p.kind} · {p.status}</small></span><button disabled={busy} type="button" onClick={() => { setEditing(p); setNotice(''); setError(''); formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>Edit release</button></li>)}</ul></div>;
+}

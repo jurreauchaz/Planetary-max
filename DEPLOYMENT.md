@@ -20,7 +20,26 @@ npm run build
 npx wrangler deploy --dry-run
 ```
 
-Set the two administrator secrets using `npx wrangler secret put ADMIN_PASSWORD_HASH` and `npx wrangler secret put JWT_SECRET`. These commands prompt for values; do not paste secrets into chat or commit them.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:bddbecd18c05e4a9a964bb0638431a7f6e177a55e88db34dd7871a296fb1b8b5 -->
+
+### Create the administrator login
+
+After `npm ci`, authenticate Wrangler to the Cloudflare account containing the `planetary-max` Worker. On your own trusted terminal, run:
+
+```bash
+npx wrangler login
+npm run admin:setup -- --remote
+```
+
+Enter and confirm a unique password of at least 24 characters when prompted. Input is hidden. The command sends the password's SHA-256 hash and a freshly generated independent signing secret to the configured Worker in one Wrangler request; it does not save or display the password. Save your password in a password manager. This is a single password-based administrator login with no username. Open `/#/admin` on the deployed site to sign in. Running the command again changes the password, rotates the signing secret, and invalidates existing administrator sessions. Never put the password or secrets in chat or source control.
+
+For a local Preview only, run `npm run admin:setup -- --local`. It creates an ignored `.dev.vars` with restricted permissions and refuses to overwrite an existing file. Restart the local Worker after creating it. Keep local and production passwords different. Existing `.dev.vars` files must be preserved or moved aside manually before creating new local credentials.
+
+You may alternatively set `ADMIN_PASSWORD_HASH` and `JWT_SECRET` individually with `npx wrangler secret put`. The hash must be a 64-character SHA-256 hex digest of the exact UTF-8 password, and the signing secret must be independent and at least 32 bytes.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 After reviewing the target Cloudflare account, apply all pending migrations to the real database and deploy:
 

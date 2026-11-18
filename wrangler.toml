@@ -1,41 +1,25 @@
-#:schema node_modules/wrangler/config-schema.json
 name = "planetary-max"
 main = "src/worker.ts"
-compatibility_date = "2026-03-01"
-compatibility_flags = ["nodejs_compat"]
+compatibility_date = "2024-03-20"
 
 [assets]
-directory = "./dist"
-binding = "ASSETS"
+directory = "./public"
 
 [vars]
 ENVIRONMENT = "production"
-PROTOCOL_VERSION = "DAT-JURREAUISM-v1"
-PRE_TIER_INDEX = "IDX-PRETIER-001"
-ISOLATE_MEMORY_LIMIT_MB = "128"
-
-[[kv_namespaces]]
-binding = "SESSION_KV"
-id = "6ead4589e312473c94661e058533360f"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "planetary_max_root_db"
-database_id = "27f854d1-6c29-4a30-aaa5-345da09b02ff"
-migrations_dir = "migrations"
+database_name = "planetary-max-db"
+database_id = "cb3feb4d-3cf4-4126-b495-ff4095fe3f97"
 
-[[durable_objects.bindings]]
-name = "NODE_REGISTRY"
-class_name = "NodeRegistryDO"
+[[kv_namespaces]]
+binding = "KV_BINDING"
+id = "9c1c8f836dca4d829de41e393e38fa0a"
 
-[[durable_objects.bindings]]
-name = "BEEMAX_SECURE_REGISTRY"
-class_name = "BEEMAXSecureNodeRegistryDO"
+[[kv_namespaces]]
+binding = "SESSION_KV"
+id = "97ffea67c9026ca923785107ef7f3658"
 
-[[migrations]]
-tag = "v1-node-registry"
-new_sqlite_classes = ["NodeRegistryDO"]
-
-[[migrations]]
-tag = "v2-secure-registry"
-new_sqlite_classes = ["BEEMAXSecureNodeRegistryDO"]
+[ai]
+binding = "AI"

@@ -59,7 +59,29 @@ In Cloudflare Workers Builds, use `npm run build` as the build command and `npx 
 
 Migrations 0016 and 0017 are required. Migration 0016 adds a catalog flag and hides the exact unchanged historical demo artwork records; it preserves the rows. Migration 0017 links new settlement receipts to paying wallets for access-link recovery. Back up the production database before migration. No remote migration or deployment was performed during this task.
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:d8765afb2c81ec13c3954c24c6831cd3244fa0f941fac0a6c7cdddf4abc301bd -->
+
+## Ecosystem publishing and BEEMAX
+
+The existing app is extended in place; see [specification coverage](docs/ECOSYSTEM.md) for implemented capabilities and remaining infrastructure requirements. Do not reset production data or rewrite existing Durable Object migration tags for this update.
+
+In Cloudflare Builds, select the repository root and the branch containing this update. Use `npm run build` and `npx wrangler deploy --config ./wrangler.toml`. The nested `workers/beemax-core` configuration uses the same Worker name and must not be selected for the showroom.
+
+Apply the new additive D1 migration after inspecting the target account:
+
+```bash
+npx wrangler d1 migrations apply planetary-max-db --remote --config ./wrangler.toml
+```
+
+Root configuration includes `AI` (Workers AI) and `BEEMAX_LIMITER`, in addition to the existing administrator-session binding. BEEMAX uses the owner's Workers AI account and requires no model key in browser code. Its live availability and usage limits must be checked in that account after deployment. It currently supports conversation only.
+
+At `/#/admin`, open Publishing desk → Games, apps & media. Save a draft, then publish it when the cover and release/purchase URLs are ready. Games and apps appear at `/#/games`; media appears at `/#/media`. Paid digital releases open the official linked store for payment and delivery. DAT payment processing is not enabled by entering a DAT price. Use Edit release to revise or archive a publication.
+
 ## Populate the application
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 1. Open `/#/admin` (or `/admin`) and sign in.
 2. In Publishing desk, create an artist profile and publish each real artwork. Supply an image URL, its actual SHA-256 asset digest, medium, dimensions, and USD price in cents. The stored digest is metadata, not an ownership certificate.

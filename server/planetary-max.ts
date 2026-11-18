@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { registerEcosystem, type EcosystemBindings } from './digital-catalog';
 import { z } from 'zod';
 import { sign, verify } from 'hono/jwt';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
@@ -11,7 +12,7 @@ import { ADMIN_SESSION_TTL_MS, sha256Hex } from './admin-session';
 
 import type { Bindings } from './types';
 
-type AppBindings = Bindings & {
+type AppBindings = Bindings & EcosystemBindings & {
   ADMIN_LOGIN_LIMITER: RateLimit;
   RPC_URL?: string;
   USDC_CONTRACT?: string;
@@ -476,6 +477,8 @@ app.get('/api/admin/ledger', async (c) => {
     return c.json({ error: 'Failed to retrieve ledger' }, 503);
   }
 });
+
+registerEcosystem(app, requireAdmin);
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/') || c.req.path.startsWith('/v1/')) return c.json({ error: 'Not found' }, 404);

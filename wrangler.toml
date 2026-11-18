@@ -1,12 +1,18 @@
+#:schema node_modules/wrangler/config-schema.json
 name = "planetary-max"
 main = "src/worker.ts"
 compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
 
 [assets]
 directory = "./public"
+binding = "ASSETS"
 
 [vars]
 ENVIRONMENT = "production"
+PROTOCOL_VERSION = "DAT-JURREAUISM-v1"
+PRE_TIER_INDEX = "IDX-PRETIER-001"
+ISOLATE_MEMORY_LIMIT_MB = "128"
 
 [[d1_databases]]
 binding = "DB"
@@ -23,3 +29,19 @@ id = "97ffea67c9026ca923785107ef7f3658"
 
 [ai]
 binding = "AI"
+
+[[durable_objects.bindings]]
+name = "NODE_REGISTRY"
+class_name = "NodeRegistryDO"
+
+[[durable_objects.bindings]]
+name = "BEEMAX_SECURE_REGISTRY"
+class_name = "BEEMAXSecureNodeRegistryDO"
+
+[[migrations]]
+tag = "v1-node-registry"
+new_sqlite_classes = ["NodeRegistryDO"]
+
+[[migrations]]
+tag = "v2-secure-registry"
+new_sqlite_classes = ["BEEMAXSecureNodeRegistryDO"]

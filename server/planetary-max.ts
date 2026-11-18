@@ -7,6 +7,7 @@ import { verifyMessage } from 'viem';
 import { bodyLimit } from 'hono/body-limit';
 import { verifyNodeSignature } from './middleware';
 import { checkoutMessage } from '../src/shared/checkoutMessage';
+import { ADMIN_SESSION_TTL_MS, sha256Hex } from './admin-session';
 
 import type { Bindings } from './types';
 
@@ -15,7 +16,9 @@ type AppBindings = Bindings & {
   RPC_URL?: string;
   USDC_CONTRACT?: string;
   TREASURY_WALLET?: string;
+  ADMIN_PASSWORD?: string;
   ADMIN_PASSWORD_HASH?: string;
+  ADMIN_SESSIONS: DurableObjectNamespace;
   JWT_SECRET?: string;
   RESEND_API_KEY?: string;
   PUBLIC_APP_URL?: string;
@@ -73,24 +76,41 @@ function escapeHtml(value: string) {
 function getJwtSecret(env: AppBindings) { return env.JWT_SECRET && new TextEncoder().encode(env.JWT_SECRET).length >= 32 ? env.JWT_SECRET : ''; }
 async function verifyPassword(input: string, expected: string): Promise<boolean> {
   if (!/^[\da-f]{64}$/i.test(expected)) return false;
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
-  const actual = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-  let mismatch = actual.length ^ expected.length;
-  for (let i = 0; i < actual.length; i++) mismatch |= actual.charCodeAt(i) ^ (expected.toLowerCase().charCodeAt(i) || 0);
+  const actual = await sha256Hex(input);
+  let mismatch = 0;
+  for (let i = 0; i < actual.length; i++) mismatch |= actual.charCodeAt(i) ^ expected.toLowerCase().charCodeAt(i);
   return mismatch === 0;
+}
+function dashboardPassword(env: AppBindings): string | undefined {
+  return typeof env.ADMIN_PASSWORD === 'string' && env.ADMIN_PASSWORD.length > 0 ? env.ADMIN_PASSWORD : undefined;
+}
+async function sessionRequest(env: AppBindings, token: string, action: 'create' | 'verify' | 'revoke', fingerprint?: string): Promise<Response> {
+  if (!env.ADMIN_SESSIONS || !/^as1_[0-9a-f]{64}$/.test(token)) return new Response(null, { status: 503 });
+  const id = env.ADMIN_SESSIONS.idFromName(await sha256Hex(token));
+  return env.ADMIN_SESSIONS.get(id).fetch(`https://admin-session.internal/${action}`, { method: 'POST', body: action === 'create' ? JSON.stringify({ fingerprint }) : undefined });
 }
 
 // Administrative writes require an authenticated operator, even on the same origin.
 async function requireAdmin(c: Context<{ Bindings: AppBindings; Variables: JwtVariables }>, next: Next) {
-  const secret = getJwtSecret(c.env);
-  if (!secret) return c.json({ error: 'Admin authentication is not configured' }, 503);
   const token = c.req.header('Authorization')?.replace(/^Bearer\s+/i, '') || getCookie(c, 'max_admin');
   if (!token) return c.json({ error: 'Administrator sign-in required' }, 401);
-  try {
-    const payload = await verify(token, secret, 'HS256');
-    if (payload.role !== 'admin' || typeof payload.exp !== 'number' || payload.exp <= Date.now() / 1000) return c.json({ error: 'Forbidden' }, 403);
-    c.set('jwtPayload', payload);
-  } catch { return c.json({ error: 'Administrator session expired' }, 401); }
+  if (dashboardPassword(c.env)) {
+    if (!/^as1_[0-9a-f]{64}$/.test(token)) return c.json({ error: 'Administrator session expired' }, 401);
+    try {
+      const result = await sessionRequest(c.env, token, 'verify');
+      if (result.status === 401) return c.json({ error: 'Administrator session expired' }, 401);
+      if (!result.ok) return c.json({ error: 'Administrator sessions are unavailable' }, 503);
+      c.set('jwtPayload', { role: 'admin' });
+    } catch { return c.json({ error: 'Administrator sessions are unavailable' }, 503); }
+  } else {
+    const secret = getJwtSecret(c.env);
+    if (!secret) return c.json({ error: 'Admin authentication is not configured' }, 503);
+    try {
+      const payload = await verify(token, secret, 'HS256');
+      if (payload.role !== 'admin' || typeof payload.exp !== 'number' || payload.exp <= Date.now() / 1000) return c.json({ error: 'Forbidden' }, 403);
+      c.set('jwtPayload', payload);
+    } catch { return c.json({ error: 'Administrator session expired' }, 401); }
+  }
   if (!['GET', 'HEAD'].includes(c.req.method) && !sameOriginWrite(c)) return c.json({ error: 'A same-origin request is required.' }, 403);
   return next();
 }
@@ -359,19 +379,43 @@ app.post('/api/admin/login', async (c) => {
     const limit = await c.env.ADMIN_LOGIN_LIMITER.limit({ key: c.req.header('CF-Connecting-IP') || 'local' });
     if (!limit.success) { c.header('Retry-After', '60'); return c.json({ error: 'Too many sign-in attempts. Try again in a minute.' }, 429); }
   } catch { return c.json({ error: 'Login protection is unavailable' }, 503); }
-  if (!c.env.ADMIN_PASSWORD_HASH || !getJwtSecret(c.env)) return c.json({ error: 'Admin authentication is not configured' }, 503);
+  const configuredPassword = dashboardPassword(c.env);
+  const signingSecret = getJwtSecret(c.env);
+  if (configuredPassword ? configuredPassword.length > 1024 || !c.env.ADMIN_SESSIONS : !c.env.ADMIN_PASSWORD_HASH || !signingSecret) {
+    return c.json({ error: 'Admin authentication is not configured' }, 503);
+  }
   try {
     const body = z.object({ password: z.string().min(1).max(1024) }).parse(await readJson(c));
-    if (!body.password || !(await verifyPassword(body.password, c.env.ADMIN_PASSWORD_HASH))) return c.json({ error: 'Invalid admin credentials' }, 401);
-    const now = Math.floor(Date.now() / 1000);
-    const token = await sign({ role: 'admin', iat: now, exp: now + 4 * 60 * 60 }, getJwtSecret(c.env), 'HS256');
-    setCookie(c, 'max_admin', token, { httpOnly: true, secure: new URL(c.req.url).protocol === 'https:', sameSite: 'Strict', path: '/', maxAge: 4 * 60 * 60 });
+    const expected = configuredPassword ? await sha256Hex(configuredPassword) : c.env.ADMIN_PASSWORD_HASH!;
+    if (!(await verifyPassword(body.password, expected))) return c.json({ error: 'Invalid admin credentials' }, 401);
+    let token: string;
+    if (configuredPassword) {
+      token = `as1_${Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')}`;
+      try {
+        const session = await sessionRequest(c.env, token, 'create', expected);
+        if (!session.ok) return c.json({ error: 'Administrator sessions are unavailable' }, 503);
+      } catch { return c.json({ error: 'Administrator sessions are unavailable' }, 503); }
+    } else {
+      const now = Math.floor(Date.now() / 1000);
+      token = await sign({ role: 'admin', iat: now, exp: now + ADMIN_SESSION_TTL_MS / 1000 }, signingSecret, 'HS256');
+    }
+    setCookie(c, 'max_admin', token, { httpOnly: true, secure: new URL(c.req.url).protocol === 'https:', sameSite: 'Strict', path: '/', maxAge: ADMIN_SESSION_TTL_MS / 1000 });
     return c.json({ success: true });
   } catch { return c.json({ error: 'Login process failed' }, 400); }
 });
 app.use('/api/admin/*', requireAdmin);
 app.get('/api/admin/session', (c) => c.json({ authenticated: true }));
-app.post('/api/admin/logout', (c) => { deleteCookie(c, 'max_admin', { path: '/' }); return c.json({ success: true }); });
+app.post('/api/admin/logout', async (c) => {
+  if (dashboardPassword(c.env)) {
+    const token = c.req.header('Authorization')?.replace(/^Bearer\s+/i, '') || getCookie(c, 'max_admin');
+    try {
+      const result = await sessionRequest(c.env, token!, 'revoke');
+      if (!result.ok) return c.json({ error: 'Administrator sessions are unavailable' }, 503);
+    } catch { return c.json({ error: 'Administrator sessions are unavailable' }, 503); }
+  }
+  deleteCookie(c, 'max_admin', { path: '/' });
+  return c.json({ success: true });
+});
 app.get('/api/admin/nodes', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(`SELECT n.node_id, n.status, n.created_at, n.updated_at,
@@ -442,6 +486,7 @@ app.onError((error, c) => {
   return c.json({ error: 'Internal server error' }, 500);
 });
 
+export { AdminSessionDO } from './admin-session';
 export { NodeRegistryDO } from '../workers/beemax-core/src/registryDo';
 export { BEEMAXSecureNodeRegistryDO } from '../workers/beemax-core/src/secureRegistryDo';
 export default app;

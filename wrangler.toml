@@ -39,6 +39,10 @@ class_name = "NodeRegistryDO"
 name = "BEEMAX_SECURE_REGISTRY"
 class_name = "BEEMAXSecureNodeRegistryDO"
 
+[[durable_objects.bindings]]
+name = "ADMIN_SESSIONS"
+class_name = "AdminSessionDO"
+
 [[migrations]]
 tag = "v1-node-registry"
 new_sqlite_classes = ["NodeRegistryDO"]
@@ -46,3 +50,7 @@ new_sqlite_classes = ["NodeRegistryDO"]
 [[migrations]]
 tag = "v2-secure-registry"
 new_sqlite_classes = ["BEEMAXSecureNodeRegistryDO"]
+
+[[migrations]]
+tag = "v3-admin-sessions"
+new_sqlite_classes = ["AdminSessionDO"]

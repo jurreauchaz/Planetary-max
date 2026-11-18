@@ -46,7 +46,13 @@ npx wrangler deploy --dry-run
 
 `/#/admin` opens the public overview. Choose **Operator sign-in** to enter your administrator password and open publishing; no username is required. The public view remains available when signed out. Private publishing, customer data, node administration and BEEMAX inference require an authorized session. The client verifies the server session after login and rechecks it on focus and every minute.
 
-Configure `ADMIN_PASSWORD` as a Cloudflare Worker secret and retain `ADMIN_SESSIONS` with its existing migration. **If both password settings exist, `ADMIN_PASSWORD` takes precedence over `ADMIN_PASSWORD_HASH`.** The sign-in panel reports the active mode without showing secret values. For legacy mode, remove `ADMIN_PASSWORD`, retain a valid 64-character hexadecimal `ADMIN_PASSWORD_HASH` and an independent `JWT_SECRET` of at least 32 bytes, and enter the original password rather than the hash. Invalid legacy hash configuration now reports a setup error instead of invalid credentials. No default password is embedded in the app.
+Configure `ADMIN_PASSWORD` as a Cloudflare Worker secret and retain `ADMIN_SESSIONS` with its existing migration. **If both password settings exist, `ADMIN_PASSWORD` takes precedence over `ADMIN_PASSWORD_HASH`.** <!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:1caa71cb3755835ac9b4aee66cdc33df52646a97f8b5b1da04681aa9382e71f7 -->
+
+Public sign-in displays only account-entry controls and concise errors. Configuration guidance belongs in these operator deployment instructions.
+
+<!-- /coderabbit-ai-generated:v1 --> For legacy mode, remove `ADMIN_PASSWORD`, retain a valid 64-character hexadecimal `ADMIN_PASSWORD_HASH` and an independent `JWT_SECRET` of at least 32 bytes, and enter the original password rather than the hash. Invalid legacy hash configuration now reports a setup error instead of invalid credentials. No default password is embedded in the app.
 
 Use Cloudflare → Workers & Pages → planetary-max → Settings → Variables and Secrets to correct the active setting, then deploy changes if prompted. Changing the Dashboard password invalidates existing sessions. Never share password values in chat or commit them. Local Preview credentials are synthetic and differ from production.
 

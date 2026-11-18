@@ -4,7 +4,7 @@ import type { Bindings } from './types';
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const MAX_SIGNED_BODY_BYTES = 60_000;
 
-function decodeBase64Url(value: string): Uint8Array | null {
+function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> | null {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
   try {
     const base64 = value.replace(/-/g, '+').replace(/_/g, '/');

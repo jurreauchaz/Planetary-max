@@ -94,6 +94,7 @@ export function ArtworkLightbox({ artwork, currentUser, onUserChange, onClose, o
   );
 
   async function handleAcquisitionAttemptAfterAuth() {
+    if (!artwork) return;
     setLoading(true);
     setError(null);
     setSuccess(null);

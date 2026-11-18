@@ -18,6 +18,7 @@ export function ArtworkUploadForm({ onSuccess }: ArtworkUploadFormProps) {
   const [priceCents, setPriceCents] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [provenanceHash, setProvenanceHash] = useState('');
+  const [fulfillmentUri,setFulfillmentUri]=useState('');
   const [status, setStatus] = useState<{ loading: boolean; error?: string; success?: string }>({ loading: false });
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -37,6 +38,7 @@ export function ArtworkUploadForm({ onSuccess }: ArtworkUploadFormProps) {
           price_cents: Number(priceCents),
           image_url: imageUrl.trim(),
           provenance_hash: provenanceHash.trim(),
+          fulfillment_uri: fulfillmentUri.trim(),
         }),
       });
       const data = await response.json() as ApiResponse;
@@ -83,7 +85,7 @@ export function ArtworkUploadForm({ onSuccess }: ArtworkUploadFormProps) {
         <label className="block text-xs text-slate-300">Provenance SHA-256 hash
           <input className={inputClass} required pattern="(?:0x)?[a-fA-F0-9]{64}" title="Enter a 64-character SHA-256 hex digest, optionally prefixed with 0x" value={provenanceHash} onChange={(event) => setProvenanceHash(event.target.value)} placeholder="64 hex characters" />
         </label>
-        <p className="text-xs text-slate-400">Submit the SHA-256 digest of the artwork asset. The server stores it as artwork metadata; it does not verify ownership or mint a blockchain token.</p>
+        <label>Private collector asset URL (HTTPS or IPFS, optional)<input maxLength={2048} value={fulfillmentUri} onChange={e=>setFulfillmentUri(e.target.value)}/></label><p className="text-xs text-slate-400">Submit the SHA-256 digest of the artwork asset. The server stores it as artwork metadata; it does not verify ownership or mint a blockchain token.</p>
         <button className="w-full rounded bg-purple-500 px-4 py-2 font-bold text-slate-950 disabled:opacity-50" type="submit" disabled={status.loading}>
           {status.loading ? 'Submitting…' : 'Add to gallery'}
         </button>

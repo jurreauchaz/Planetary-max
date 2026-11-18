@@ -1,18 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-export const meshNodes = [
-  { id: 'CORE-01', name: 'MAX-MIND Core', role: 'Primary intelligence', x: .49, y: .46, color: '#c5a3ff' },
-  { id: 'ART-02', name: 'MAX Art', role: 'Creative domain', x: .27, y: .26, color: '#8b7bff' },
-  { id: 'CHESS-03', name: 'MAX Chess', role: 'Strategy domain', x: .72, y: .25, color: '#58d3e9' },
-  { id: 'SPORT-04', name: 'MAX Sports', role: 'Telemetry domain', x: .77, y: .70, color: '#58d3e9' },
-  { id: 'BEE-05', name: 'BEE-MAX', role: 'Registry gateway', x: .26, y: .72, color: '#d7a96e' },
-  { id: 'D1-06', name: 'D1 Ledger', role: 'Data layer', x: .51, y: .82, color: '#8b7bff' },
-];
-const edges = [[0,1],[0,2],[0,3],[0,4],[0,5],[1,4],[2,3],[3,5],[4,5]];
-
-export default function Ic_MeshVisualizer() {
+import type { RegistryNode } from './BeeMaxControlDeck';
+export default function Ic_MeshVisualizer({nodes}:{nodes:RegistryNode[]}) {
+  const meshNodes = nodes.map((n,i)=>({id:n.node_id,name:n.node_id,role:n.status,x:.5+Math.cos(i/Math.max(nodes.length,1)*Math.PI*2)*.3,y:.46+Math.sin(i/Math.max(nodes.length,1)*Math.PI*2)*.29,color:n.status==='ACTIVE'?'#c5a3ff':'#777777'}));
+  const edges: number[][] = [];
   const canvas = useRef<HTMLCanvasElement>(null);
   const [selected, setSelected] = useState(0);
+  const selectedNode=meshNodes[Math.min(selected,meshNodes.length-1)];
   useEffect(() => {
     const element = canvas.current;
     if (!element) return;
@@ -45,7 +39,7 @@ export default function Ic_MeshVisualizer() {
       });
     };
     const observer = new ResizeObserver(draw); observer.observe(element); draw(); return () => observer.disconnect();
-  }, [selected]);
+  }, [selected,nodes]);
   const choose = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = (event.clientX - rect.left) / rect.width, y = (event.clientY - rect.top) / rect.height;
@@ -54,10 +48,10 @@ export default function Ic_MeshVisualizer() {
   };
   return <div className="mesh-body">
     <div className="mesh-stage"><div className="mesh-corner top-left"/><div className="mesh-corner top-right"/><div className="mesh-corner bottom-left"/><div className="mesh-corner bottom-right"/>
-      <div className="mesh-overlay"><span><i className="status-dot violet"/> ICV MESH VISUALIZATION</span><span>SIMULATED TOPOLOGY</span></div>
-      <canvas ref={canvas} onClick={choose} aria-label="Sample mesh graph. Select a node using the buttons below." />
-      <div className="mesh-bottom"><span>✥ &nbsp; DRAG-FREE VIEW</span><span>{String(selected + 1).padStart(2, '0')} / 06</span></div>
+      <div className="mesh-overlay"><span><i className="status-dot violet"/> NODE IDENTITY MAP</span><span>REGISTERED IDENTITIES</span></div>
+      <canvas ref={canvas} onClick={choose} aria-label="Registered node map. Select a node using the buttons below." />
+      <div className="mesh-bottom"><span>✥ &nbsp; CONNECTIONS NOT REPORTED</span><span>{nodes.length ? Math.min(selected+1,nodes.length) : 0} / {nodes.length}</span></div>
     </div>
-    <div className="mesh-footer"><div><span className="mini-label">SELECTED NODE</span><strong><span className="node-indicator" style={{background:meshNodes[selected].color}} />{meshNodes[selected].name}</strong><small>{meshNodes[selected].id} · {meshNodes[selected].role}</small></div><div className="node-picker" aria-label="Select mesh node">{meshNodes.map((node,i)=><button key={node.id} type="button" aria-label={node.name} aria-pressed={selected === i} onClick={()=>setSelected(i)} style={{'--node-color':node.color} as React.CSSProperties}/>)}</div></div>
+    <div className="mesh-footer"><div><span className="mini-label">SELECTED NODE</span><strong><span className="node-indicator" style={{background:selectedNode?.color || '#777777'}} />{selectedNode?.name || 'No nodes enrolled'}</strong><small>{selectedNode?.id || '—'} · {selectedNode?.role || 'Awaiting registry data'}</small></div><div className="node-picker" aria-label="Select mesh node">{meshNodes.map((node,i)=><button key={node.id} type="button" aria-label={node.name} aria-pressed={selected === i} onClick={()=>setSelected(i)} style={{'--node-color':node.color} as React.CSSProperties}/>)}</div></div>
   </div>;
 }

@@ -1,11 +1,17 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { sign, jwt } from 'hono/jwt';
+import { sign, verify } from 'hono/jwt';
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import type { Context, Next } from 'hono';
+import { verifyMessage } from 'viem';
+import { bodyLimit } from 'hono/body-limit';
+import { verifyNodeSignature } from './middleware';
+import { checkoutMessage } from '../src/shared/checkoutMessage';
 
 import type { Bindings } from './types';
-import beemaxFinanceRouter from './beemax-finance';
 
 type AppBindings = Bindings & {
+  ADMIN_LOGIN_LIMITER: RateLimit;
   RPC_URL?: string;
   USDC_CONTRACT?: string;
   TREASURY_WALLET?: string;
@@ -16,6 +22,8 @@ type AppBindings = Bindings & {
 };
 type JwtVariables = { jwtPayload: { role?: string; exp?: number; iat?: number } };
 const app = new Hono<{ Bindings: AppBindings; Variables: JwtVariables }>();
+app.use('/api/*', bodyLimit({ maxSize: 60_000, onError: c => c.json({error:'Request body too large'},413) }));
+app.use('/v1/*', bodyLimit({ maxSize: 60_000, onError: c => c.json({error:'Request body too large'},413) }));
 const leagues = ['NFL', 'NBA', 'MLB', 'SOCCER', 'MMA'] as const;
 const BASE_CHAIN_ID = 8453n;
 const TRANSFER_EVENT_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
@@ -27,6 +35,7 @@ const ArtworkSchema = z.object({
   dimensions: z.string().trim().max(100).default(''),
   price_cents: z.number().int().min(1).max(100_000_000),
   image_url: z.string().url().max(2048),
+  fulfillment_uri: z.string().max(2048).refine(v => !v || /^(https:\/\/|ipfs:\/\/)/.test(v), 'Use an HTTPS or IPFS collector URL').default(''),
   provenance_hash: z.string().trim().regex(/^(?:0x)?[\da-fA-F]{64}$/, 'Expected a SHA-256 hex digest'),
 });
 const ChessSchema = z.object({
@@ -61,7 +70,7 @@ async function readJson(c: { req: { header(name: string): string | undefined; js
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 }
-function getJwtSecret(env: AppBindings) { return env.JWT_SECRET || env.ADMIN_PASSWORD_HASH || ''; }
+function getJwtSecret(env: AppBindings) { return env.JWT_SECRET && new TextEncoder().encode(env.JWT_SECRET).length >= 32 ? env.JWT_SECRET : ''; }
 async function verifyPassword(input: string, expected: string): Promise<boolean> {
   if (!/^[\da-f]{64}$/i.test(expected)) return false;
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
@@ -70,6 +79,48 @@ async function verifyPassword(input: string, expected: string): Promise<boolean>
   for (let i = 0; i < actual.length; i++) mismatch |= actual.charCodeAt(i) ^ (expected.toLowerCase().charCodeAt(i) || 0);
   return mismatch === 0;
 }
+
+// Administrative writes require an authenticated operator, even on the same origin.
+async function requireAdmin(c: Context<{ Bindings: AppBindings; Variables: JwtVariables }>, next: Next) {
+  const secret = getJwtSecret(c.env);
+  if (!secret) return c.json({ error: 'Admin authentication is not configured' }, 503);
+  const token = c.req.header('Authorization')?.replace(/^Bearer\s+/i, '') || getCookie(c, 'max_admin');
+  if (!token) return c.json({ error: 'Administrator sign-in required' }, 401);
+  try {
+    const payload = await verify(token, secret, 'HS256');
+    if (payload.role !== 'admin' || typeof payload.exp !== 'number' || payload.exp <= Date.now() / 1000) return c.json({ error: 'Forbidden' }, 403);
+    c.set('jwtPayload', payload);
+  } catch { return c.json({ error: 'Administrator session expired' }, 401); }
+  if (!['GET', 'HEAD'].includes(c.req.method) && !sameOriginWrite(c)) return c.json({ error: 'A same-origin request is required.' }, 403);
+  return next();
+}
+app.use('/api/*', async (c, next) => {
+  c.header('Cache-Control', 'no-store');
+  return next();
+});
+app.use('/api/artworks', (c, next) => c.req.method === 'POST' ? requireAdmin(c, next) : next());
+app.use('/v1/dat/chess', (c, next) => c.req.method === 'POST' ? requireAdmin(c, next) : next());
+app.use('/v1/dat/sports', (c, next) => c.req.method === 'POST' ? requireAdmin(c, next) : next());
+app.post('/api/beemax/heartbeat', verifyNodeSignature, async (c) => {
+  let input;
+  try { input = z.object({ mesh_region: z.string().trim().min(1).max(100) }).strict().parse(await readJson(c)); }
+  catch { return c.json({ error: 'A mesh_region of up to 100 characters is required.' }, 400); }
+  try {
+    const now = Date.now();
+    await c.env.DB.prepare(`INSERT INTO node_telemetry (node_id, status, mesh_region, last_heartbeat)
+      VALUES (?, 'ACTIVE', ?, ?) ON CONFLICT(node_id) DO UPDATE SET status = 'ACTIVE', mesh_region = excluded.mesh_region, last_heartbeat = excluded.last_heartbeat`).bind(c.req.header('X-Max-Node-Id'), input.mesh_region, now).run();
+    return c.json({ success: true, last_heartbeat: now });
+  } catch { return c.json({ error: 'Heartbeat could not be stored.' }, 503); }
+});
+app.get('/api/status', async (c) => {
+  try {
+    const counts = await c.env.DB.prepare(`SELECT
+      (SELECT COUNT(*) FROM artworks WHERE is_demo = 0) AS artworks,
+      (SELECT COUNT(*) FROM chess_games) AS games,
+      (SELECT COUNT(*) FROM sports_telemetry) AS sports`).first();
+    return c.json({ ready: true, database: 'connected', counts, checkout: Boolean(c.env.RPC_URL && c.env.USDC_CONTRACT && c.env.TREASURY_WALLET), timestamp: new Date().toISOString() });
+  } catch { return c.json({ ready: false, database: 'unavailable', error: 'Database requires configuration or migrations.' }, 503); }
+});
 
 // Public gallery catalog. Never expose fulfillment locations, purchase tokens, or collector information.
 app.get('/api/artworks', async (c) => {
@@ -80,7 +131,7 @@ app.get('/api/artworks', async (c) => {
               a.image_url, a.status, a.metadata_hash AS provenance_hash
        FROM artworks a JOIN users u ON u.id = a.artist_id
        LEFT JOIN artist_profiles ap ON ap.user_id = a.artist_id
-       ORDER BY a.created_at DESC LIMIT 100`
+       WHERE a.is_demo = 0 ORDER BY a.created_at DESC LIMIT 100`
     ).all();
     return c.json({ artworks: results ?? [] });
   } catch (error) {
@@ -101,11 +152,12 @@ app.post('/api/artworks', async (c) => {
   try {
     const creator = await c.env.DB.prepare('SELECT id FROM users WHERE id = ? OR username = ? LIMIT 1').bind(input.creator, input.creator).first<{ id: string }>();
     if (!creator) return c.json({ success: false, error: 'Creator account was not found. Use an existing artist account username or ID.' }, 400);
+    const id = crypto.randomUUID();
     await c.env.DB.prepare(
-      `INSERT INTO artworks (id, artist_id, title, medium, dimensions, price_cents, currency, image_url, status, metadata_hash)
-       VALUES (?, ?, ?, ?, ?, ?, 'DAT', ?, 'available', ?)`
-    ).bind(crypto.randomUUID(), creator.id, input.title, input.medium, input.dimensions, input.price_cents, input.image_url, input.provenance_hash.replace(/^0x/i, '').toLowerCase()).run();
-    return c.json({ success: true, message: 'Artwork listed.', artwork: { artist_id: creator.id, title: input.title } }, 201);
+      `INSERT INTO artworks (id, artist_id, title, medium, dimensions, price_cents, currency, image_url, status, metadata_hash, fulfillment_uri)
+       VALUES (?, ?, ?, ?, ?, ?, 'USD', ?, 'available', ?, ?)`
+    ).bind(id, creator.id, input.title, input.medium, input.dimensions, input.price_cents, input.image_url, input.provenance_hash.replace(/^0x/i, '').toLowerCase(), input.fulfillment_uri || null).run();
+    return c.json({ success: true, message: 'Artwork listed.', artwork: { id, artist_id: creator.id, title: input.title } }, 201);
   } catch (error) {
     console.error('Unable to save artwork:', error);
     return c.json({ success: false, error: 'Artwork could not be saved to D1.' }, 503);
@@ -134,16 +186,18 @@ app.get('/api/artworks/:id/unlock', async (c) => {
 });
 
 // Verify USDC settlement against the configured Base RPC receipt. Never trust a client-supplied amount or sender.
+app.get('/api/checkout/config', (c) => c.json({ enabled: Boolean(c.env.RPC_URL && c.env.USDC_CONTRACT && c.env.TREASURY_WALLET), chainId: 8453, treasury: c.env.TREASURY_WALLET || null, contract: c.env.USDC_CONTRACT || null }));
 app.post('/api/checkout/verify-usdc', async (c) => {
-  let body: { artworkId?: string; txHash?: string; buyerAddress?: string; buyerEmail?: string };
-  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body' }, 400); }
-  const { artworkId, txHash, buyerAddress, buyerEmail } = body;
-  if (!artworkId || artworkId.length > 100 || !txHash || !/^0x[\da-fA-F]{64}$/.test(txHash)) {
-    return c.json({ error: 'Invalid artworkId or transaction hash format' }, 400);
-  }
-  if (buyerAddress && !/^0x[\da-fA-F]{40}$/.test(buyerAddress)) return c.json({ error: 'Invalid buyer wallet address' }, 400);
-  const email = buyerEmail?.trim();
-  if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) return c.json({ error: 'Invalid buyer email address' }, 400);
+  if (!sameOriginWrite(c)) return c.json({ error: 'A same-origin request is required.' }, 403);
+  let body;
+  try {
+    body = z.object({ artworkId: z.string().min(1).max(100), txHash: z.string().regex(/^0x[\da-fA-F]{64}$/), buyerAddress: z.string().regex(/^0x[\da-fA-F]{40}$/), buyerEmail: z.string().trim().email().max(254).optional(), signature: z.string().regex(/^0x[\da-fA-F]{130}$/) }).parse(await readJson(c));
+  } catch { return c.json({ error: 'A valid artwork, transaction hash, paying wallet and wallet signature are required.' }, 400); }
+  const { artworkId, txHash, buyerAddress, buyerEmail: email, signature } = body;
+  try {
+    const valid = await verifyMessage({ address: buyerAddress as `0x${string}`, message: checkoutMessage(new URL(c.req.url).origin, artworkId, txHash, buyerAddress), signature: signature as `0x${string}` });
+    if (!valid) return c.json({ error: 'The signature does not match the paying wallet.' }, 403);
+  } catch { return c.json({ error: 'Wallet signature verification failed.' }, 403); }
   const { RPC_URL, USDC_CONTRACT, TREASURY_WALLET } = c.env;
   if (!RPC_URL || !USDC_CONTRACT || !TREASURY_WALLET || !/^0x[\da-fA-F]{40}$/.test(USDC_CONTRACT) || !/^0x[\da-fA-F]{40}$/.test(TREASURY_WALLET)) {
     console.error('USDC checkout is missing valid Base RPC/contract/treasury configuration');
@@ -151,8 +205,11 @@ app.post('/api/checkout/verify-usdc', async (c) => {
   }
 
   try {
+    const existing = await c.env.DB.prepare(`SELECT a.access_token FROM transactions t JOIN artworks a ON a.id = t.artwork_id
+      WHERE t.artwork_id = ? AND t.tx_reference = ? AND t.buyer_wallet = ? AND a.status = 'sold' LIMIT 1`).bind(artworkId, txHash.toLowerCase(), buyerAddress.toLowerCase()).first<{access_token:string}>();
+    if (existing?.access_token) return c.json({ status: 'confirmed', accessToken: existing.access_token, unlockUrl: `/vault/${encodeURIComponent(artworkId)}?token=${encodeURIComponent(existing.access_token)}` });
     const artwork = await c.env.DB.prepare(
-      `SELECT id, title, price_cents FROM artworks WHERE id = ? AND status = 'available' LIMIT 1`
+      `SELECT id, title, price_cents FROM artworks WHERE id = ? AND status = 'available' AND is_demo = 0 AND fulfillment_uri IS NOT NULL LIMIT 1`
     ).bind(artworkId).first<{ id: string; title: string; price_cents: number }>();
     if (!artwork) return c.json({ error: 'Artwork not found or already sold' }, 404);
 
@@ -206,11 +263,11 @@ app.post('/api/checkout/verify-usdc', async (c) => {
          WHERE id = ? AND status = 'available'`
       ).bind(resolvedEmail, accessToken, artworkId),
       c.env.DB.prepare(
-        `INSERT INTO transactions (artwork_id, buyer_email, tx_reference, created_at)
-         SELECT ?, ?, ?, ? WHERE EXISTS (
+        `INSERT INTO transactions (artwork_id, buyer_email, tx_reference, created_at, buyer_wallet)
+         SELECT ?, ?, ?, ?, ? WHERE EXISTS (
            SELECT 1 FROM artworks WHERE id = ? AND status = 'sold' AND access_token = ?
-         ) AND NOT EXISTS (SELECT 1 FROM transactions WHERE tx_reference = ?)`
-      ).bind(artworkId, resolvedEmail, txReference, Date.now(), artworkId, accessToken, txReference),
+         )`
+      ).bind(artworkId, resolvedEmail, txReference, Date.now(), verifiedSender.toLowerCase(), artworkId, accessToken),
     ]);
     if (results[0].meta.changes !== 1 || results[1].meta.changes !== 1) {
       return c.json({ error: 'Artwork was acquired simultaneously or this transaction was already redeemed' }, 409);
@@ -297,17 +354,70 @@ app.post('/v1/dat/sports', async (c) => {
 // JWT-protected administrator access and sales ledger.
 app.post('/api/admin/login', async (c) => {
   if (!sameOriginWrite(c)) return c.json({ error: 'A same-origin request is required.' }, 403);
+  if (!c.env.ADMIN_LOGIN_LIMITER) return c.json({ error: 'Login protection is not configured' }, 503);
+  try {
+    const limit = await c.env.ADMIN_LOGIN_LIMITER.limit({ key: c.req.header('CF-Connecting-IP') || 'local' });
+    if (!limit.success) { c.header('Retry-After', '60'); return c.json({ error: 'Too many sign-in attempts. Try again in a minute.' }, 429); }
+  } catch { return c.json({ error: 'Login protection is unavailable' }, 503); }
   if (!c.env.ADMIN_PASSWORD_HASH || !getJwtSecret(c.env)) return c.json({ error: 'Admin authentication is not configured' }, 503);
   try {
-    const body = await c.req.json<{ password?: string }>();
+    const body = z.object({ password: z.string().min(1).max(1024) }).parse(await readJson(c));
     if (!body.password || !(await verifyPassword(body.password, c.env.ADMIN_PASSWORD_HASH))) return c.json({ error: 'Invalid admin credentials' }, 401);
     const now = Math.floor(Date.now() / 1000);
-    return c.json({ token: await sign({ role: 'admin', iat: now, exp: now + 4 * 60 * 60 }, getJwtSecret(c.env), 'HS256') });
+    const token = await sign({ role: 'admin', iat: now, exp: now + 4 * 60 * 60 }, getJwtSecret(c.env), 'HS256');
+    setCookie(c, 'max_admin', token, { httpOnly: true, secure: new URL(c.req.url).protocol === 'https:', sameSite: 'Strict', path: '/', maxAge: 4 * 60 * 60 });
+    return c.json({ success: true });
   } catch { return c.json({ error: 'Login process failed' }, 400); }
 });
-app.use('/api/admin/*', async (c, next) => {
-  if (!getJwtSecret(c.env)) return c.json({ error: 'Admin authentication is not configured' }, 503);
-  return jwt({ secret: getJwtSecret(c.env), alg: 'HS256' })(c, next);
+app.use('/api/admin/*', requireAdmin);
+app.get('/api/admin/session', (c) => c.json({ authenticated: true }));
+app.post('/api/admin/logout', (c) => { deleteCookie(c, 'max_admin', { path: '/' }); return c.json({ success: true }); });
+app.get('/api/admin/nodes', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare(`SELECT n.node_id, n.status, n.created_at, n.updated_at,
+      t.mesh_region, t.last_heartbeat FROM trusted_nodes n LEFT JOIN node_telemetry t ON t.node_id = n.node_id
+      ORDER BY n.created_at DESC LIMIT 200`).all();
+    return c.json({ nodes: results ?? [] });
+  } catch { return c.json({ error: 'Node registry is unavailable. Apply the database migrations.' }, 503); }
+});
+app.post('/api/admin/nodes', async (c) => {
+  let input;
+  try {
+    input = z.object({ node_id: z.string().regex(/^[\w.:-]{1,100}$/), public_key_b64: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).parse(await readJson(c));
+    const key = Uint8Array.from(atob(input.public_key_b64.replace(/-/g, '+').replace(/_/g, '/') + '='), char => char.charCodeAt(0));
+    if (key.length !== 32) throw new Error();
+    await crypto.subtle.importKey('raw', key, 'Ed25519', false, ['verify']);
+  } catch { return c.json({ error: 'Enter a node ID and raw 32-byte Ed25519 public key in base64url format.' }, 400); }
+  try {
+    const now = Date.now();
+    await c.env.DB.batch([
+      c.env.DB.prepare("INSERT INTO trusted_nodes (node_id, public_key_b64, status, created_at, updated_at) VALUES (?, ?, 'ACTIVE', ?, ?)").bind(input.node_id, input.public_key_b64, now, now),
+      c.env.DB.prepare("INSERT INTO beemax_ledger_events (id, entity_type, entity_id, action) VALUES (?, 'node', ?, 'ENROLLED')").bind(crypto.randomUUID(), input.node_id),
+    ]);
+    return c.json({ success: true }, 201);
+  } catch { return c.json({ error: 'Node could not be enrolled. The ID may already exist.' }, 409); }
+});
+app.post('/api/admin/nodes/:id/revoke', async (c) => {
+  try {
+    const result = await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE trusted_nodes SET status = 'REVOKED', updated_at = ? WHERE node_id = ?").bind(Date.now(), c.req.param('id')),
+      c.env.DB.prepare("INSERT INTO beemax_ledger_events (id, entity_type, entity_id, action) SELECT ?, 'node', node_id, 'REVOKED' FROM trusted_nodes WHERE node_id = ?").bind(crypto.randomUUID(), c.req.param('id')),
+    ]);
+    return result[0].meta.changes === 1 ? c.json({ success: true }) : c.json({ error: 'Node not found' }, 404);
+  } catch { return c.json({ error: 'Revocation could not be saved.' }, 503); }
+});
+app.post('/api/admin/artists', async (c) => {
+  let data;
+  try { data = z.object({ username: z.string().trim().min(1).max(100), bio: z.string().trim().max(2000).default('') }).parse(await readJson(c)); }
+  catch { return c.json({ error: 'Enter an artist name and biography of up to 2000 characters.' }, 400); }
+  try {
+    const id = crypto.randomUUID();
+    await c.env.DB.batch([
+      c.env.DB.prepare("INSERT INTO users (id, username, password_hash, role, status) VALUES (?, ?, '!catalog-profile-no-login!', 'user', 'active')").bind(id, data.username),
+      c.env.DB.prepare('INSERT INTO artist_profiles (user_id, bio, verified_status) VALUES (?, ?, 0)').bind(id, data.bio),
+    ]);
+    return c.json({ success: true, id }, 201);
+  } catch { return c.json({ error: 'Artist could not be created. The name may already exist.' }, 409); }
 });
 app.get('/api/admin/ledger', async (c) => {
   if (c.get('jwtPayload')?.role !== 'admin') return c.json({ error: 'Forbidden' }, 403);
@@ -323,7 +433,6 @@ app.get('/api/admin/ledger', async (c) => {
   }
 });
 
-app.route('/', beemaxFinanceRouter);
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/') || c.req.path.startsWith('/v1/')) return c.json({ error: 'Not found' }, 404);
   return c.env.ASSETS.fetch(c.req.raw);

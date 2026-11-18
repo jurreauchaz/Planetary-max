@@ -1,4 +1,7 @@
 import { Hono } from 'hono';
+import { verifyBaseTransfer } from './base-settlement';
+import { registerPaymentReviews } from './payment-reviews';
+import { registerDigitalCheckout } from './digital-checkout';
 import { registerEcosystem, type EcosystemBindings } from './digital-catalog';
 import { z } from 'zod';
 import { sign, verify } from 'hono/jwt';
@@ -29,8 +32,6 @@ const app = new Hono<{ Bindings: AppBindings; Variables: JwtVariables }>();
 app.use('/api/*', bodyLimit({ maxSize: 60_000, onError: c => c.json({error:'Request body too large'},413) }));
 app.use('/v1/*', bodyLimit({ maxSize: 60_000, onError: c => c.json({error:'Request body too large'},413) }));
 const leagues = ['NFL', 'NBA', 'MLB', 'SOCCER', 'MMA'] as const;
-const BASE_CHAIN_ID = 8453n;
-const TRANSFER_EVENT_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
 const ArtworkSchema = z.object({
   creator: z.string().trim().min(1).max(100),
@@ -234,51 +235,15 @@ app.post('/api/checkout/verify-usdc', async (c) => {
     ).bind(artworkId).first<{ id: string; title: string; price_cents: number }>();
     if (!artwork) return c.json({ error: 'Artwork not found or already sold' }, 404);
 
-    const rpc = async (method: string, params: unknown[]) => {
-      const response = await fetch(RPC_URL, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-      });
-      if (!response.ok) throw new Error(`Base RPC returned HTTP ${response.status}`);
-      const data = await response.json() as { result?: unknown; error?: { message?: string } };
-      if (data.error) throw new Error(data.error.message || 'Base RPC request failed');
-      return data.result;
-    };
-    const chainId = await rpc('eth_chainId', []) as string;
-    if (BigInt(chainId) !== BASE_CHAIN_ID) {
-      console.error('Configured USDC RPC is not connected to Base mainnet');
-      return c.json({ error: 'Configured RPC is not connected to Base Mainnet' }, 503);
-    }
-    const receipt = await rpc('eth_getTransactionReceipt', [txHash]) as null | {
-      status: string; from: string; blockNumber: string;
-      logs: Array<{ address: string; topics: string[]; data: string }>;
-    };
-    if (!receipt) return c.json({ status: 'pending', message: 'Transaction not yet mined' }, 202);
-    if (receipt.status !== '0x1') return c.json({ error: 'On-chain transaction reverted or failed' }, 403);
-    const latestBlock = BigInt(await rpc('eth_blockNumber', []) as string);
-    if (latestBlock - BigInt(receipt.blockNumber) < 2n) return c.json({ status: 'pending', message: 'Waiting for Base confirmations' }, 202);
-
-    const expectedRecipient = `0x${TREASURY_WALLET.slice(2).toLowerCase().padStart(64, '0')}`;
-    const expectedAmount = BigInt(artwork.price_cents) * 10_000n; // USDC has 6 decimals; price_cents is USD cents.
-    let verifiedSender: string | undefined;
-    for (const log of receipt.logs ?? []) {
-      if (log.address.toLowerCase() !== USDC_CONTRACT.toLowerCase() || log.topics.length < 3 || log.topics[0].toLowerCase() !== TRANSFER_EVENT_TOPIC) continue;
-      if (log.topics[2].toLowerCase() !== expectedRecipient.toLowerCase() || !/^0x[\da-fA-F]+$/.test(log.data)) continue;
-      let amount: bigint;
-      try { amount = BigInt(log.data); } catch { continue; }
-      if (amount < expectedAmount) continue;
-      const sender = `0x${log.topics[1].slice(-40)}`;
-      if (buyerAddress && sender.toLowerCase() !== buyerAddress.toLowerCase()) continue;
-      verifiedSender = sender;
-      break;
-    }
-    if (!verifiedSender) return c.json({ error: 'No matching USDC transfer from the buyer to the treasury for the required amount' }, 403);
+    const verification = await verifyBaseTransfer({ RPC_URL, USDC_CONTRACT, TREASURY_WALLET }, txHash, buyerAddress, artwork.price_cents);
+    if ('status' in verification) return c.json(verification.body, verification.status);
+    const verifiedSender = verification.sender;
 
     const txReference = txHash.toLowerCase();
     const accessToken = crypto.randomUUID();
     const resolvedEmail = email || verifiedSender.toLowerCase();
     // D1 batch runs atomically. The conditional INSERT only succeeds after this request wins the available->sold update.
-    const results = await c.env.DB.batch([
+    await c.env.DB.batch([
       c.env.DB.prepare(
         `UPDATE artworks SET status = 'sold', buyer_email = ?, access_token = ?
          WHERE id = ? AND status = 'available'`
@@ -290,7 +255,8 @@ app.post('/api/checkout/verify-usdc', async (c) => {
          )`
       ).bind(artworkId, resolvedEmail, txReference, Date.now(), verifiedSender.toLowerCase(), artworkId, accessToken),
     ]);
-    if (results[0].meta.changes !== 1 || results[1].meta.changes !== 1) {
+    const recorded = await c.env.DB.prepare("SELECT t.id FROM transactions t JOIN artworks a ON a.id=t.artwork_id WHERE a.id=? AND a.access_token=? AND a.status='sold' AND t.tx_reference=? AND t.buyer_wallet=?").bind(artworkId, accessToken, txReference, verifiedSender.toLowerCase()).first();
+    if (!recorded) {
       return c.json({ error: 'Artwork was acquired simultaneously or this transaction was already redeemed' }, 409);
     }
 
@@ -372,6 +338,15 @@ app.post('/v1/dat/sports', async (c) => {
   }
 });
 
+// Public configuration names help operators distinguish Dashboard passwords
+// from legacy hashes without exposing secret values or password fingerprints.
+app.get('/api/admin/login/config', c => {
+  const password = dashboardPassword(c.env);
+  const mode = password ? 'dashboard_password' : c.env.ADMIN_PASSWORD_HASH ? 'legacy_hash' : 'unconfigured';
+  const configured = Boolean(c.env.ADMIN_LOGIN_LIMITER && (password ? password.length <= 1024 && c.env.ADMIN_SESSIONS : /^[\da-f]{64}$/i.test(c.env.ADMIN_PASSWORD_HASH || '') && getJwtSecret(c.env)));
+  return c.json({ configured, mode, guidance: password ? 'Enter the password stored in ADMIN_PASSWORD on this Worker. It takes precedence over ADMIN_PASSWORD_HASH.' : 'Enter the original password, not its SHA-256 hash. Legacy mode requires ADMIN_PASSWORD_HASH and an independent JWT_SECRET. You can instead configure ADMIN_PASSWORD with ADMIN_SESSIONS.' });
+});
+
 // JWT-protected administrator access and sales ledger.
 app.post('/api/admin/login', async (c) => {
   if (!sameOriginWrite(c)) return c.json({ error: 'A same-origin request is required.' }, 403);
@@ -382,7 +357,7 @@ app.post('/api/admin/login', async (c) => {
   } catch { return c.json({ error: 'Login protection is unavailable' }, 503); }
   const configuredPassword = dashboardPassword(c.env);
   const signingSecret = getJwtSecret(c.env);
-  if (configuredPassword ? configuredPassword.length > 1024 || !c.env.ADMIN_SESSIONS : !c.env.ADMIN_PASSWORD_HASH || !signingSecret) {
+  if (configuredPassword ? configuredPassword.length > 1024 || !c.env.ADMIN_SESSIONS : !/^[\da-f]{64}$/i.test(c.env.ADMIN_PASSWORD_HASH || '') || !signingSecret) {
     return c.json({ error: 'Admin authentication is not configured' }, 503);
   }
   try {
@@ -479,6 +454,8 @@ app.get('/api/admin/ledger', async (c) => {
 });
 
 registerEcosystem(app, requireAdmin);
+registerDigitalCheckout(app);
+registerPaymentReviews(app, requireAdmin);
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/') || c.req.path.startsWith('/v1/')) return c.json({ error: 'Not found' }, 404);

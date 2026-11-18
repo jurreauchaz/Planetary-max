@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { Artwork } from '../../hooks/useArtworks';
 
-export default function ImmersiveGallery({ artworks, onSelect }: { artworks: Artwork[]; onSelect: (art: Artwork) => void }) {
+type GalleryWork = Pick<Artwork, 'id' | 'title' | 'image_url' | 'artist_name'>;
+export default function ImmersiveGallery<T extends GalleryWork>({ artworks, onSelect, inspectLabel = 'Inspect artwork' }: { artworks: T[]; onSelect: (art: T) => void; inspectLabel?: string }) {
   const mount = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
@@ -44,5 +45,5 @@ export default function ImmersiveGallery({ artworks, onSelect }: { artworks: Art
     return () => { disposed = true; cancelAnimationFrame(frame); resize.disconnect(); controls.dispose(); texture?.dispose(); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); renderer.dispose(); renderer.domElement.remove(); };
   }, [current]);
   if (!current) return null;
-  return <section className="immersive-gallery"><div ref={mount} className="immersive-stage">{unavailable && <img src={current.image_url} alt={current.title}/>}</div><div className="immersive-controls"><button onClick={() => setIndex((Math.min(index, artworks.length - 1) - 1 + artworks.length) % artworks.length)} aria-label="Previous artwork">←</button><div><strong>{current.title}</strong><p>{current.artist_name} · {Math.min(index + 1, artworks.length)} / {artworks.length}</p></div><button onClick={() => onSelect(current)}>Inspect artwork</button><button onClick={() => setIndex((index + 1) % artworks.length)} aria-label="Next artwork">→</button></div><p className="quiet">Drag to orbit · Scroll or pinch to zoom · Use arrows to explore the collection</p></section>;
+  return <section className="immersive-gallery"><div ref={mount} className="immersive-stage">{unavailable && <img src={current.image_url} alt={current.title}/>}</div><div className="immersive-controls"><button onClick={() => setIndex((Math.min(index, artworks.length - 1) - 1 + artworks.length) % artworks.length)} aria-label="Previous artwork">←</button><div><strong>{current.title}</strong><p>{current.artist_name} · {Math.min(index + 1, artworks.length)} / {artworks.length}</p></div><button onClick={() => onSelect(current)}>{inspectLabel}</button><button onClick={() => setIndex((index + 1) % artworks.length)} aria-label="Next artwork">→</button></div><p className="quiet">Drag to orbit · Scroll or pinch to zoom · Use arrows to explore the collection</p></section>;
 }

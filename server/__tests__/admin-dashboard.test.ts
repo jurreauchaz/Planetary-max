@@ -45,6 +45,16 @@ async function loggedInCookie(env: any) {
 afterEach(() => { vi.useRealTimers(); });
 
 describe('Dashboard administrator password', () => {
+  it('reports the active credential mode without disclosing values and identifies invalid hash setup', async () => {
+    const { env } = dashboardEnv();
+    env.ADMIN_PASSWORD_HASH = createHash('sha256').update('legacy private password').digest('hex'); env.JWT_SECRET = jwtSecret;
+    const config = async () => (await app.request('https://max.test/api/admin/login/config', {}, env)).json() as Promise<any>;
+    const dashboard = await config(); expect(dashboard).toMatchObject({configured:true,mode:'dashboard_password'}); expect(dashboard.guidance).toContain('takes precedence');
+    expect(JSON.stringify(dashboard)).not.toContain(password); expect(JSON.stringify(dashboard)).not.toContain(env.ADMIN_PASSWORD_HASH);
+    delete env.ADMIN_PASSWORD; expect(await config()).toMatchObject({configured:true,mode:'legacy_hash'});
+    env.ADMIN_PASSWORD_HASH = 'a plaintext password entered into the wrong setting';
+    expect(await config()).toMatchObject({configured:false,mode:'legacy_hash'}); expect((await login(env, 'irrelevant')).status).toBe(503);
+  });
   it('accepts ADMIN_PASSWORD alone, checks the exact password and revokes on logout', async () => {
     const { env, records } = dashboardEnv();
     expect((await login(env, 'wrong')).status).toBe(401);

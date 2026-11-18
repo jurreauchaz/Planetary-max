@@ -15,7 +15,7 @@ function prepare(sql: string) {
     async run() { const info = db.prepare(sql).run(...args); return { meta: { changes: Number(info.changes) } }; },
   }; return statement;
 }
-const product = { kind: 'app', title: 'Synthetic release', creator: 'Test publisher', description: 'A local verification record.', image_url: 'https://example.test/cover.png', destination_url: 'https://example.test/release', price_cents: 1250, currency: 'DAT', platform: 'Web', version: '1.0', status: 'draft' };
+const product = { kind: 'app', title: 'Synthetic release', creator: 'Test publisher', description: 'A local verification record.', image_url: 'https://example.test/cover.png', destination_url: 'https://example.test/release', price_cents: 1250, currency: 'DAT', platform: 'Web', version: '1.0', status: 'draft', fulfillment_uri: 'https://private.test/asset', metadata_hash: 'a'.repeat(64), total_editions: 10, delivery_protection: 'access_controlled' };
 const env = () => ({ DB: { prepare }, JWT_SECRET: secret, BEEMAX_LIMITER: { limit: vi.fn(async () => ({ success: true })) }, AI: { run: vi.fn(async () => ({ response: 'Synthetic model response.' })) } });
 async function req(path: string, method = 'GET', body?: unknown, admin = true, bindings = env(), origin = 'https://max.test') {
   const headers: Record<string, string> = { Origin: origin, 'Content-Type': 'application/json' };
@@ -25,6 +25,22 @@ async function req(path: string, method = 'GET', body?: unknown, admin = true, b
 beforeEach(() => { db = new DatabaseSync(':memory:'); db.exec('PRAGMA foreign_keys=ON'); for (const name of readdirSync('migrations').filter(n => n.endsWith('.sql')).sort()) db.exec(readFileSync(`migrations/${name}`, 'utf8')); });
 afterEach(() => { db.close(); });
 describe('digital catalog', () => {
+  it('stores bounded HTTPS video and screenshot previews for public published releases', async () => {
+    const preview = { ...product, status: 'published', preview_video_url: 'https://example.test/trailer.webm', gallery_images: ['https://example.test/screen.png'] };
+    expect((await req('/api/admin/catalog','POST',preview)).status).toBe(201);
+    const data = await (await req('/api/catalog','GET',undefined,false)).json() as any;
+    expect(data.products[0].preview_video_url).toBe(preview.preview_video_url);
+    expect(JSON.parse(data.products[0].gallery_images_json)).toEqual(preview.gallery_images);
+    for(const extra of [{preview_video_url:'javascript:alert(1)'},{gallery_images:['http://bad.test/image']},{gallery_images:Array(13).fill('https://example.test/image')}]) expect((await req('/api/admin/catalog','POST',{...preview,...extra})).status).toBe(400);
+  });
+  it('requires a declared protection method and encryption for public IPFS paid assets', async () => {
+    const paid={...product,status:'published',currency:'USDC',fulfillment_uri:'ipfs://bafy-test-content',delivery_protection:'access_controlled'};
+    expect((await req('/api/admin/catalog','POST',paid)).status).toBe(400);
+    expect((await req('/api/admin/catalog','POST',{...paid,delivery_protection:'encrypted'})).status).toBe(201);
+    const publicData=await (await req('/api/catalog','GET',undefined,false)).json() as any;
+    expect(publicData.products[0].metadata_hash).toBeUndefined();expect(publicData.products[0].fulfillment_uri).toBeUndefined();
+    const privateData=await (await req('/api/admin/catalog')).json() as any;expect(privateData.products[0].metadata_hash).toBe(product.metadata_hash);
+  });
   it('requires authentication and same-origin authorization for mutations', async () => {
     expect((await req('/api/admin/catalog', 'POST', product, false)).status).toBe(401);
     expect((await req('/api/admin/catalog', 'POST', product, true, env(), 'https://attacker.test')).status).toBe(403);

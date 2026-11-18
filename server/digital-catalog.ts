@@ -9,19 +9,25 @@ export type EcosystemBindings = {
   BEEMAX_LIMITER?: RateLimit;
 };
 const secureUrl = z.string().url().max(2048).refine(value => {
-  const url = new URL(value);
-  return url.protocol === 'https:' && !url.username && !url.password;
+  try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password; } catch { return false; }
 }, 'Use an HTTPS URL without embedded credentials.');
 const product = z.object({
   kind: z.enum(['game', 'app', 'media']), title: z.string().trim().min(1).max(160),
   creator: z.string().trim().min(1).max(160), description: z.string().trim().min(1).max(6000),
-  image_url: secureUrl, destination_url: secureUrl,
+  image_url: secureUrl, destination_url: z.union([secureUrl, z.literal('')]).optional().default(''),
   price_cents: z.number().int().min(0).max(100_000_000), currency: z.enum(['DAT', 'USD', 'USDC']),
   platform: z.string().trim().min(1).max(100), version: z.string().trim().min(1).max(80),
+  preview_video_url: z.union([secureUrl, z.literal('')]).optional().default(''),
+  gallery_images: z.array(secureUrl).max(12).optional().default([]),
+  fulfillment_uri: z.union([secureUrl, z.literal(''), z.string().regex(/^ipfs:\/\/[^\s]+$/).max(2048)]).optional().default(''),
+  delivery_protection: z.enum(['encrypted','access_controlled']).optional(),
+  metadata_hash: z.union([z.string().regex(/^[\da-f]{64}$/i), z.literal('')]).optional().default(''),
+  total_editions: z.number().int().min(1).max(1_000_000).optional().default(1),
   status: z.enum(['draft', 'published', 'archived']),
-}).strict();
+}).strict().refine(p => p.status !== 'published' || p.price_cents > 0 || Boolean(p.destination_url), 'Free publications require a launch URL.').refine(p => p.status !== 'published' || !p.price_cents || Boolean(p.fulfillment_uri && p.metadata_hash && p.delivery_protection && (p.delivery_protection === 'encrypted' || p.fulfillment_uri.startsWith('https://'))), 'Paid publications require protected delivery and an asset hash. Public IPFS content must be encrypted.');
 const chat = z.object({ messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().trim().min(1).max(6000) }).strict()).min(1).max(20) }).strict().refine(input => input.messages.at(-1)?.role === 'user', 'Finish with a user message.');
-const columns = 'id, kind, title, creator, description, image_url, destination_url, price_cents, currency, platform, version, status, created_at, updated_at';
+const columns = 'id, kind, title, creator, description, image_url, destination_url, price_cents, currency, platform, version, status, preview_video_url, gallery_images_json, metadata_hash, delivery_protection, total_editions, sold_count, created_at, updated_at';
+const publicColumns = columns.replace(', metadata_hash', '').replace(', delivery_protection', '').replace('destination_url', "CASE WHEN price_cents=0 THEN destination_url ELSE NULL END AS destination_url") + ", CASE WHEN fulfillment_uri IS NOT NULL AND metadata_hash IS NOT NULL AND currency IN ('USD','USDC') AND (delivery_protection='encrypted' OR (delivery_protection='access_controlled' AND fulfillment_uri LIKE 'https://%')) AND price_cents>0 AND sold_count<total_editions THEN 1 ELSE 0 END AS direct_acquisition";
 
 export function registerEcosystem<E extends { Bindings: EcosystemBindings }>(app: Hono<E>, requireAdmin: MiddlewareHandler<E>) {
   app.use('/api/admin/runtime', requireAdmin);
@@ -31,8 +37,8 @@ export function registerEcosystem<E extends { Bindings: EcosystemBindings }>(app
     if (kind && !['game', 'app', 'media'].includes(kind)) return c.json({ error: 'Unknown catalog kind.' }, 400);
     try {
       const query = kind
-        ? c.env.DB.prepare(`SELECT ${columns} FROM digital_products WHERE status = 'published' AND kind = ? ORDER BY created_at DESC, id LIMIT 200`).bind(kind)
-        : c.env.DB.prepare(`SELECT ${columns} FROM digital_products WHERE status = 'published' ORDER BY created_at DESC, id LIMIT 200`);
+        ? c.env.DB.prepare(`SELECT ${publicColumns} FROM digital_products WHERE status = 'published' AND kind = ? ORDER BY created_at DESC, id LIMIT 200`).bind(kind)
+        : c.env.DB.prepare(`SELECT ${publicColumns} FROM digital_products WHERE status = 'published' ORDER BY created_at DESC, id LIMIT 200`);
       return c.json({ products: (await query.all()).results });
     } catch { return c.json({ error: 'Catalog unavailable. Apply the catalog migration.' }, 503); }
   });
@@ -41,7 +47,7 @@ export function registerEcosystem<E extends { Bindings: EcosystemBindings }>(app
   app.use('/api/admin/catalog', requireAdmin);
   app.use('/api/admin/catalog/*', requireAdmin);
   app.get('/api/admin/catalog', async c => {
-    try { return c.json({ products: (await c.env.DB.prepare(`SELECT ${columns} FROM digital_products ORDER BY created_at DESC, id LIMIT 200`).all()).results }); }
+    try { return c.json({ products: (await c.env.DB.prepare(`SELECT ${columns}, fulfillment_uri FROM digital_products ORDER BY created_at DESC, id LIMIT 200`).all()).results }); }
     catch { return c.json({ error: 'Catalog unavailable. Apply the catalog migration.' }, 503); }
   });
   app.post('/api/admin/catalog', async c => {
@@ -50,8 +56,8 @@ export function registerEcosystem<E extends { Bindings: EcosystemBindings }>(app
     if (!parsed.success) return c.json({ error: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') }, 400);
     const p = parsed.data; const id = crypto.randomUUID();
     try {
-      await c.env.DB.prepare('INSERT INTO digital_products (id, kind, title, creator, description, image_url, destination_url, price_cents, currency, platform, version, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, p.kind, p.title, p.creator, p.description, p.image_url, p.destination_url, p.price_cents, p.currency, p.platform, p.version, p.status).run();
+      await c.env.DB.prepare('INSERT INTO digital_products (id, kind, title, creator, description, image_url, destination_url, price_cents, currency, platform, version, status, preview_video_url, gallery_images_json, fulfillment_uri, metadata_hash, total_editions, delivery_protection) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, p.kind, p.title, p.creator, p.description, p.image_url, p.destination_url, p.price_cents, p.currency, p.platform, p.version, p.status, p.preview_video_url || null, JSON.stringify(p.gallery_images), p.fulfillment_uri || null, p.metadata_hash || null, p.total_editions, p.delivery_protection || null).run();
       return c.json({ id }, 201);
     } catch { return c.json({ error: 'Product could not be saved.' }, 503); }
   });
@@ -61,10 +67,16 @@ export function registerEcosystem<E extends { Bindings: EcosystemBindings }>(app
     if (!parsed.success) return c.json({ error: 'Enter valid product fields and HTTPS links.' }, 400);
     const p = parsed.data;
     try {
-      const result = await c.env.DB.prepare("UPDATE digital_products SET kind=?, title=?, creator=?, description=?, image_url=?, destination_url=?, price_cents=?, currency=?, platform=?, version=?, status=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?")
-        .bind(p.kind, p.title, p.creator, p.description, p.image_url, p.destination_url, p.price_cents, p.currency, p.platform, p.version, p.status, c.req.param('id')).run();
+      const result = await c.env.DB.prepare("UPDATE digital_products SET kind=?, title=?, creator=?, description=?, image_url=?, destination_url=?, price_cents=?, currency=?, platform=?, version=?, status=?, preview_video_url=?, gallery_images_json=?, fulfillment_uri=?, metadata_hash=?, total_editions=?, delivery_protection=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?")
+        .bind(p.kind, p.title, p.creator, p.description, p.image_url, p.destination_url, p.price_cents, p.currency, p.platform, p.version, p.status, p.preview_video_url || null, JSON.stringify(p.gallery_images), p.fulfillment_uri || null, p.metadata_hash || null, p.total_editions, p.delivery_protection || null, c.req.param('id')).run();
       return result.meta.changes ? c.json({ success: true }) : c.json({ error: 'Product not found.' }, 404);
-    } catch { return c.json({ error: 'Product could not be updated.' }, 503); }
+    } catch (error) { return /edition|CHECK constraint/i.test(String(error)) ? c.json({ error: 'Edition supply is fixed after the first acquisition and cannot be less than acquired editions.' }, 409) : c.json({ error: 'Product could not be updated.' }, 503); }
+  });
+  app.use('/api/admin/digital-orders', requireAdmin);
+  app.get('/api/admin/digital-orders', async c => {
+    c.header('Cache-Control', 'no-store');
+    try { return c.json({ orders: (await c.env.DB.prepare('SELECT id,product_id,title,buyer_wallet,amount_cents,currency,edition_number,total_editions,tx_reference,certificate_hash,created_at FROM digital_orders ORDER BY created_at DESC LIMIT 100').all()).results }); }
+    catch { return c.json({ error: 'Sales history is unavailable.' }, 503); }
   });
   app.use('/api/admin/beemax/*', requireAdmin);
   app.get('/api/admin/beemax/config', c => c.json({ configured: Boolean(c.env.AI && c.env.BEEMAX_LIMITER), provider: 'Cloudflare Workers AI' }));

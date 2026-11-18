@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import Ic_MeshVisualizer from './Ic_MeshVisualizer';
 import BeeMaxControlDeck, { type RegistryNode } from './BeeMaxControlDeck';
-import AdminAccess from './AdminAccess';
+import AdminAccess, { useAdministrator } from './AdminAccess';
+import PublicCommandCenter from './PublicCommandCenter';
 import SubstrateModel from './SubstrateModel';
 import BeeMaxAssistant from './BeeMaxAssistant';
 import PublishingPanel from './PublishingPanel';
@@ -14,7 +15,8 @@ const nav = [
   {icon:'◫', label:'Overview', href:'#overview'}, {icon:'⌘', label:'ICV Mesh', href:'#mesh'},
   {icon:'⬡', label:'BEE-MAX Registry', href:'#registry'}, {icon:'⌁', label:'Command Terminal', href:'#terminal'}, {icon:'✳',label:'Publishing desk',href:'#publishing'},
 ];
-export default function PortalOS1Console() { return <AdminAccess><ConsoleDashboard/></AdminAccess>; }
+export default function PortalOS1Console() { return <AdminAccess><ConsoleAccess/></AdminAccess>; }
+function ConsoleAccess() { return useAdministrator() ? <ConsoleDashboard/> : <PublicCommandCenter/>; }
 function ConsoleDashboard() {
   const [nodes,setNodes]=useState<RegistryNode[]>([]); const [registryError,setRegistryError]=useState('');
   const refresh=async()=>{try{const res=await fetch('/api/admin/nodes');const data=await res.json() as {nodes:RegistryNode[];error?:string};if(!res.ok)throw new Error(data.error);setNodes(data.nodes);setRegistryError('');}catch(e){setRegistryError(e instanceof Error?e.message:'Registry unavailable');}};

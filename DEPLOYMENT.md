@@ -8,7 +8,13 @@ The client is a React/Vite application served by the root Cloudflare Worker (`sr
 
 - Node 24 or newer and npm. Use the committed `package-lock.json` with `npm ci`.
 - Cloudflare access to the D1 database and KV namespace configured in `wrangler.toml`. Their supplied IDs are configured; a local dry run does not verify account ownership or resource existence.
-- Worker secrets `ADMIN_PASSWORD_HASH` (64-character hex SHA-256 digest of a strong administrator password) and an independent `JWT_SECRET` of at least 32 bytes. Configure them through Cloudflare secrets, never through frontend variables or source control. The root Worker includes a native login rate limiter of 10 attempts per minute per reported client IP.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:f4e36bbe8b328e7de629334110952b4bb5a6a2d0230b4c5a6232ef3604983015 -->
+
+- For Dashboard-based administrator access, configure the `ADMIN_PASSWORD` Worker secret with a strong, unique password. The Worker uses random server-side sessions in its `ADMIN_SESSIONS` Durable Object binding. Sessions expire after four hours and are revoked on logout. The root Worker includes a native login rate limiter of 10 attempts per minute per reported client IP. Existing `ADMIN_PASSWORD_HASH` and independent `JWT_SECRET` credentials are supported when `ADMIN_PASSWORD` is absent.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ## Prepare and deploy
 
@@ -24,20 +30,21 @@ npx wrangler deploy --dry-run
 
 <!-- coderabbit-ai-generated-section:v1:bddbecd18c05e4a9a964bb0638431a7f6e177a55e88db34dd7871a296fb1b8b5 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:2217684bf27a34a436e1f5744d4f38c62f262447de6ba97b9ea4928be53b81a1 -->
+
 ### Create the administrator login
 
-After `npm ci`, authenticate Wrangler to the Cloudflare account containing the `planetary-max` Worker. On your own trusted terminal, run:
+1. Publish and deploy the current Worker code, including the `v3-admin-sessions` Durable Object migration in `wrangler.toml`.
+2. In Cloudflare Dashboard, open **Workers & Pages**, select the `planetary-max` Worker, and add a secret named `ADMIN_PASSWORD` under **Settings → Variables and Secrets**. Choose a unique, long password and save it in a password manager. Deploy the updated configuration if prompted.
+3. Open `/#/admin` on the deployed Worker domain and enter that password. There is no username. Never share the password in chat or commit it to the repository.
 
-```bash
-npx wrangler login
-npm run admin:setup -- --remote
-```
+The Dashboard password takes precedence if both `ADMIN_PASSWORD` and legacy secrets exist. Switching to Dashboard mode invalidates legacy JWT sessions and rejects the old password. Changing the Dashboard password invalidates current sessions. The Dashboard mode uses independent random opaque tokens stored in Durable Objects; it does not derive signing keys from the password.
 
-Enter and confirm a unique password of at least 24 characters when prompted. Input is hidden. The command sends the password's SHA-256 hash and a freshly generated independent signing secret to the configured Worker in one Wrangler request; it does not save or display the password. Save your password in a password manager. This is a single password-based administrator login with no username. Open `/#/admin` on the deployed site to sign in. Running the command again changes the password, rotates the signing secret, and invalidates existing administrator sessions. Never put the password or secrets in chat or source control.
+For an existing hash-based installation, leave `ADMIN_PASSWORD` unset and retain `ADMIN_PASSWORD_HASH` and an independent `JWT_SECRET` of at least 32 bytes. The existing `npm run admin:setup -- --remote` command provisions these legacy secrets through an authenticated Wrangler session. It rotates the JWT secret and invalidates existing legacy sessions. For a local Preview, `npm run admin:setup -- --local` creates an ignored `.dev.vars` without overwriting an existing file. Keep local and production passwords different.
 
-For a local Preview only, run `npm run admin:setup -- --local`. It creates an ignored `.dev.vars` with restricted permissions and refuses to overwrite an existing file. Restart the local Worker after creating it. Keep local and production passwords different. Existing `.dev.vars` files must be preserved or moved aside manually before creating new local credentials.
-
-You may alternatively set `ADMIN_PASSWORD_HASH` and `JWT_SECRET` individually with `npx wrangler secret put`. The hash must be a 64-character SHA-256 hex digest of the exact UTF-8 password, and the signing secret must be independent and at least 32 bytes.
+<!-- /coderabbit-ai-generated:v1 -->
 
 <!-- /coderabbit-ai-generated:v1 -->
 
@@ -76,7 +83,13 @@ A buyer must use the EOA wallet that paid and sign the site/artwork/transaction-
 
 - Artwork, sports, and chess record writes now require administrator authentication and same-origin requests. Public reads remain available.
 - `/api/admin/login` establishes an HttpOnly, SameSite cookie. It no longer returns the bearer token to browser JavaScript. Existing integrations must adapt; authorized bearer tokens remain accepted by protected endpoints.
-- Signing requires an independent JWT secret; the password hash is no longer used as a signing-secret fallback.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:8bb1b85f6ec64aa0882291653a4299986556d6c7d79d68321ffd0202634b29ca -->
+
+- Legacy JWT mode requires an independent signing secret and never uses the password hash as a signing-secret fallback. Dashboard password mode uses independent opaque server-side sessions instead of JWTs.
+
+<!-- /coderabbit-ai-generated:v1 -->
 - Historical finance demo endpoints are no longer mounted on the root Worker. Their source/tests remain historical reference.
 - The root Worker no longer declares placeholder `SESSION_KV` or unused AI bindings. The separate `workers/beemax-core` authentication flow and `portal-os` deployment retain their own configuration requirements.
 

@@ -1,7 +1,7 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import { CollectorVault } from './modules/art/CollectorCheckout';
 import PortalOS1Layout from './core/PortalOS1Layout';
-import PortalOS1Hud from './core/PortalOS1Hud';
+import BeemaxPortalCommandHud from './core/BeemaxPortalCommandHud';
 const AdminConsole = React.lazy(() => import('./modules/admin/PortalOS1Console'));
 
 export default function App() {
@@ -12,7 +12,7 @@ export default function App() {
     return () => window.removeEventListener('hashchange', update);
   }, []);
   if (window.location.pathname.startsWith('/vault/')) return <CollectorVault />;
-  if (hash === '#/hud' || hash === '#/portal-os1') return <PortalOS1Hud />;
+  if (hash === '#/hud' || hash === '#/portal-os1') return <BeemaxPortalCommandHud />;
   if (hash === '#/admin' || window.location.pathname.replace(/\/$/, '') === '/admin') {
     return <Suspense fallback={<div className="loading-screen">INITIALIZING PORTAL...</div>}><AdminConsole /></Suspense>;
   }

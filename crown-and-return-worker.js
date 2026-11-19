@@ -1,4 +1,4 @@
-const COVER_SVG = `<?xml version="1.0" encoding="UTF-8"?>
+const CROWN_AND_RETURN_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1600" width="1200" height="1600" role="img" aria-label="Crown and Return - MaxJ - Jurreauism">
   <defs>
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -13,13 +13,9 @@ const COVER_SVG = `<?xml version="1.0" encoding="UTF-8"?>
     </linearGradient>
   </defs>
 
-  <!-- Ground -->
   <rect width="1200" height="1600" fill="url(#bgGrad)" />
-
-  <!-- Subtle Frame -->
   <rect x="64" y="64" width="1072" height="1472" fill="none" stroke="#D4AF37" stroke-opacity="0.28" stroke-width="2" />
 
-  <!-- Geometric Crown Anchor -->
   <g transform="translate(240, 420)">
     <polygon
       points="360,40 500,250 680,90 620,380 100,380 40,90 220,250"
@@ -29,7 +25,6 @@ const COVER_SVG = `<?xml version="1.0" encoding="UTF-8"?>
     <rect x="140" y="446" width="440" height="8" fill="#F4F6F8" fill-opacity="0.55" />
   </g>
 
-  <!-- Title Hierarchy -->
   <text
     x="600"
     y="1040"
@@ -40,7 +35,6 @@ const COVER_SVG = `<?xml version="1.0" encoding="UTF-8"?>
     letter-spacing="10"
   >CROWN AND RETURN</text>
 
-  <!-- Signature & Jurreauism Mark -->
   <text
     x="600"
     y="1120"
@@ -52,32 +46,34 @@ const COVER_SVG = `<?xml version="1.0" encoding="UTF-8"?>
   >MaxJ  //  JURREAUISM  //  DAT-JURREAUISM-v1</text>
 </svg>`;
 
-export default {
-  async fetch(request) {
-    const url = new URL(request.url);
+export function handleCoverRequest(request) {
+  const url = new URL(request.url);
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-          "Access-Control-Max-Age": "86400",
-        },
-      });
-    }
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
 
-    if (url.pathname === "/" || url.pathname === "/crown-and-return.svg") {
-      return new Response(COVER_SVG, {
-        status: 200,
-        headers: {
-          "Content-Type": "image/svg+xml; charset=utf-8",
-          "Cache-Control": "public, max-age=86400, immutable",
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
-    }
+  if (
+    url.pathname === "/crown-and-return-cover.svg" ||
+    url.pathname === "/cover.svg" ||
+    url.pathname === "/cover"
+  ) {
+    return new Response(CROWN_AND_RETURN_SVG, {
+      status: 200,
+      headers: {
+        "Content-Type": "image/svg+xml; charset=utf-8",
+        "Cache-Control": "public, max-age=86400",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
 
-    return new Response("Not Found", { status: 404 });
-  },
-};
+  return null;
+}

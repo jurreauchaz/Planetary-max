@@ -1,7 +1,7 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import { CollectorVault } from './modules/art/CollectorCheckout';
 import PortalOS1Layout from './core/PortalOS1Layout';
-import BeemaxPortalCommandHud from './core/BeemaxPortalCommandHud';
+import BeemaxPortalCommandHud from './components/BeemaxPortalCommandHud';
 const AdminConsole = React.lazy(() => import('./modules/admin/PortalOS1Console'));
 
 export default function App() {

@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*", "/v1/*"]
+run_worker_first = ["/api/*", "/v1/*", "/assets/crown-cover.png"]
 
 [vars]
 ENVIRONMENT = "production"
@@ -17,6 +17,11 @@ PRE_TIER_INDEX = "IDX-PRETIER-001"
 ISOLATE_MEMORY_LIMIT_MB = "128"
 RPC_URL = "https://mainnet.base.org"
 USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+BASE_CHAIN_ID = "8453"
+BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+PUBLIC_MAX_INTERNET_FREE = "true"
+WALLET_MODE_DEFAULT = "opt-in"
+RELEASE_ANCHOR_ID = "3c8ee1c4-79b8-4bfd-be18-430679f452f2"
 
 [[d1_databases]]
 binding = "DB"
@@ -26,7 +31,6 @@ database_id = "cb3feb4d-3cf4-4126-b495-ff4095fe3f97"
 [[kv_namespaces]]
 binding = "KV_BINDING"
 id = "9c1c8f836dca4d829de41e393e38fa0a"
-
 
 [[ratelimits]]
 name = "ADMIN_LOGIN_LIMITER"
@@ -45,6 +49,10 @@ class_name = "BEEMAXSecureNodeRegistryDO"
 name = "ADMIN_SESSIONS"
 class_name = "AdminSessionDO"
 
+[[durable_objects.bindings]]
+name = "TENANT_BEEMAX_DO"
+class_name = "TenantBeemaxDO"
+
 [[migrations]]
 tag = "v1-node-registry"
 new_sqlite_classes = ["NodeRegistryDO"]
@@ -56,6 +64,10 @@ new_sqlite_classes = ["BEEMAXSecureNodeRegistryDO"]
 [[migrations]]
 tag = "v3-admin-sessions"
 new_sqlite_classes = ["AdminSessionDO"]
+
+[[migrations]]
+tag = "v4-tenant-beemax-sqlite"
+new_sqlite_classes = ["TenantBeemaxDO"]
 
 # BEEMAX uses your Cloudflare account; no model API key is sent to browsers.
 [ai]

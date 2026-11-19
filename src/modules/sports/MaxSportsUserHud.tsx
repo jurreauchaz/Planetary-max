@@ -1,48 +1,5 @@
 import React, { useState } from 'react';
-
-interface OutputTierOption {
-  id: string;
-  tierLabel: string;
-  priceUsdc: string;
-  outputTitle: string;
-  highlightSummary: string;
-  researchNote: string;
-  riskDisclosure: string;
-  reinvestTarget: string;
-}
-
-const OUTPUT_TIERS: OutputTierOption[] = [
-  {
-    id: 'tier_free_0',
-    tierLabel: 'Free Observation & Preview',
-    priceUsdc: '0.000000',
-    outputTitle: 'Highlight Clip & Research Abstract (Free Output)',
-    highlightSummary: 'Free public MAX-INTERNET highlight & matchup overview.',
-    researchNote: 'Introductory sports & research preview; no wallet or payment required.',
-    riskDisclosure: '0.000000 USDC risked in preview mode; escrow state = untouched.',
-    reinvestTarget: 'MAX-SPORTS',
-  },
-  {
-    id: 'tier_std_5',
-    tierLabel: 'Standard Output Tier',
-    priceUsdc: '5.000000',
-    outputTitle: 'Match Highlight & Research Output Brief',
-    highlightSummary: 'Key tactical moments, tempo markers, and highlight breakdown.',
-    researchNote: 'Structured research output only — underlying modules remain internal.',
-    riskDisclosure: 'Explicit opt-in Base USDC (8453) action required only if paying for output.',
-    reinvestTarget: 'MAX-COMPUTE',
-  },
-  {
-    id: 'tier_ext_15',
-    tierLabel: 'Extended Output Tier',
-    priceUsdc: '15.000000',
-    outputTitle: 'Full Sports Prediction & Cross-Output Research Pack',
-    highlightSummary: 'Extended highlight timeline, risk/escrow breakdown, and research report.',
-    researchNote: 'Delivers output report only; no raw modules or BEEMAX console access.',
-    riskDisclosure: 'Review risk & escrow terms before opting in to Base USDC signing.',
-    reinvestTarget: 'MAX-ECOSYSTEM',
-  },
-];
+import { OUTPUT_TIERS, type OutputTierOption } from '../../shared/outputTiers';
 
 /** Output-tier preview. This UI does not create an order or initiate a payment. */
 export default function MaxSportsUserHud() {

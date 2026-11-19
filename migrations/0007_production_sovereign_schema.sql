@@ -18,7 +18,6 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 -- Extend the existing artwork catalog without changing its established status
 -- values or artist-profile relationship.
 ALTER TABLE artworks ADD COLUMN currency TEXT NOT NULL DEFAULT 'DAT';
-ALTER TABLE artworks ADD COLUMN metadata_hash TEXT;
 ALTER TABLE artworks ADD COLUMN updated_at TEXT;
 UPDATE artworks SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE updated_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_artworks_artist_id ON artworks(artist_id);
@@ -40,10 +39,6 @@ UPDATE marketplace_orders SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 CREATE INDEX IF NOT EXISTS idx_orders_artwork_id ON marketplace_orders(artwork_id);
 CREATE INDEX IF NOT EXISTS idx_orders_buyer_id ON marketplace_orders(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON marketplace_orders(payment_status);
-
--- Require a single active reservation per artwork edition. Migration 0005
--- already creates the equivalent partial uniqueness constraint while allowing
--- legacy NULL edition numbers and cancelled/failed orders.
 
 CREATE TABLE IF NOT EXISTS escrow_signatures (
   id TEXT PRIMARY KEY,

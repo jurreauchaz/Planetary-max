@@ -17,7 +17,12 @@ CREATE TABLE IF NOT EXISTS artworks (
     image_url TEXT NOT NULL,
     status TEXT CHECK(status IN ('available', 'reserved', 'sold')) DEFAULT 'available',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (artist_id) REFERENCES users(id) ON DELETE CASCADE
+    edition_number INTEGER NOT NULL DEFAULT 1,
+    total_editions INTEGER NOT NULL DEFAULT 1,
+    metadata_hash TEXT,
+    FOREIGN KEY (artist_id) REFERENCES users(id) ON DELETE CASCADE,
+    CHECK (edition_number >= 1),
+    CHECK (total_editions >= 1 AND edition_number <= total_editions)
 );
 
 CREATE TABLE IF NOT EXISTS marketplace_orders (
@@ -27,6 +32,7 @@ CREATE TABLE IF NOT EXISTS marketplace_orders (
     amount_cents INTEGER NOT NULL,
     payment_status TEXT DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    edition_number INTEGER,
     FOREIGN KEY (artwork_id) REFERENCES artworks(id),
     FOREIGN KEY (buyer_id) REFERENCES users(id)
 );

@@ -1,7 +1,6 @@
 -- Limited-edition inventory and order edition tracking.
-ALTER TABLE artworks ADD COLUMN edition_number INTEGER NOT NULL DEFAULT 1 CHECK (edition_number >= 1);
-ALTER TABLE artworks ADD COLUMN total_editions INTEGER NOT NULL DEFAULT 1 CHECK (total_editions >= 1 AND edition_number <= total_editions);
-ALTER TABLE marketplace_orders ADD COLUMN edition_number INTEGER;
+-- edition_number and total_editions are established by migration 0003 for
+-- fresh databases. They are already present in the production database.
 
 CREATE TABLE IF NOT EXISTS artwork_editions (
   id TEXT PRIMARY KEY,
@@ -25,4 +24,5 @@ FROM artworks;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_marketplace_active_artwork_edition
 ON marketplace_orders (artwork_id, edition_number)
 WHERE edition_number IS NOT NULL AND payment_status NOT IN ('cancelled', 'failed');
-CREATE INDEX IF NOT EXISTS idx_artwork_editions_status ON artwork_editions (artwork_base_id, status, edition_number);
+CREATE INDEX IF NOT EXISTS idx_artwork_editions_status
+ON artwork_editions (artwork_base_id, status, edition_number);

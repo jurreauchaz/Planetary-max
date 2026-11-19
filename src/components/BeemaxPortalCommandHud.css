@@ -1,0 +1,87 @@
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] {
+  min-height: 100vh;
+  padding: clamp(1rem, 3vw, 2rem);
+  color: #eef2e8;
+  background: #101510;
+  font: 14px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] header,
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] section {
+  margin: 0 auto 1rem;
+  max-width: 1100px;
+  padding: 1.25rem;
+  border: 1px solid #354334;
+  border-radius: 12px;
+  background: #171d17;
+}
+
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] header,
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] nav {
+  justify-content: center;
+  max-width: 1100px;
+  margin: 0 auto 1rem;
+}
+
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] button,
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] input,
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] select,
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] textarea {
+  max-width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #52634d;
+  border-radius: 7px;
+  color: inherit;
+  background: #101510;
+  font: inherit;
+}
+
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] button {
+  color: #d7f0b3;
+  cursor: pointer;
+}
+
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] a {
+  color: #c5eb8a;
+}
+
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] label {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] video {
+  display: block;
+  width: min(100%, 480px);
+  height: auto;
+  margin-top: 1rem;
+  background: #080a08;
+}
+
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] pre {
+  overflow: auto;
+  white-space: pre-wrap;
+  padding: 1rem;
+  border-radius: 8px;
+  background: #0c100c;
+}
+
+[aria-label="BEEMAX-PORTAL-OS1 Command HUD"] li {
+  margin: 0.75rem 0;
+}
+
+@media (max-width: 600px) {
+  [aria-label="BEEMAX-PORTAL-OS1 Command HUD"] header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
